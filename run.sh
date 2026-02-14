@@ -25,7 +25,6 @@ if [ $# -eq 0 ]; then
           echo "========================================="
           echo "Running test: $(basename "$test_exec")"
           $test_exec
-          echo "✓ $(basename "$test_exec") test passed"
         fi
       done
     fi
@@ -42,7 +41,6 @@ else
     echo "========================================="
     echo "Running test: $(basename "$TEST_NAME")"
 		$TEST_EXEC
-    echo "✓ $(basename "$TEST_EXEC") test passed"
 	else
 		echo "Error: Test executable '$TEST_EXEC' not found."
 		echo "Available tests in '$TEST_SUBDIR':"

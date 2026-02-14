@@ -9,5 +9,6 @@ target_include_directories(
 target_link_libraries(
   basic_test
   libbasics
+  GTest::gtest_main
 )
 

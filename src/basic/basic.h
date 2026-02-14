@@ -4,6 +4,7 @@
 //------------------------------------------------------------------------------
 // Most used headers
 //------------------------------------------------------------------------------
+
 #include <iostream> // For cout, cin, endl
 #include <memory> // For shared_ptr, unique_ptr
 #include <cstring> // For strlen
@@ -17,10 +18,19 @@
 #include <cstdint> // For fixed-width integer types like uint32_t
 #include <cassert> // For assert
 #include <functional> // For std::hash
+#include <mutex> // For std::mutex
+#include <thread> // For std::thread
+#include <csignal> // For signal handling
+#include <ctime> // For time functions
+#include <iomanip> // For std::setw, std::setfill
+#include <sstream> // For std::stringstream
+#include <filesystem> // For filesystem operations
+#include <fstream> // For file I/O
 
 //------------------------------------------------------------------------------
 // Common class macros
 //------------------------------------------------------------------------------
+
 #define DISALLOW_COPY_AND_ASSIGN(TypeName)                                     \
   TypeName(const TypeName &) = delete;                                         \
   const TypeName &operator=(const TypeName &) = delete;
@@ -32,6 +42,7 @@
 //------------------------------------------------------------------------------
 // Defining LOGVARS(...) for logging variable names and values
 //------------------------------------------------------------------------------
+
 template <typename T> struct NamedVar {
   const char *name;
   const T &value;
@@ -104,6 +115,7 @@ VarPrinter<Args...> make_printer(NamedVar<Args>... vars) {
 //------------------------------------------------------------------------------
 // Math functions
 //------------------------------------------------------------------------------
+
 template <typename T> inline T CeilDiv(T a, T b) {
   return (a + b - 1) / b;
 }
@@ -141,6 +153,7 @@ template <typename T> inline T PrevPowerOfTwo(T x) {
 //------------------------------------------------------------------------------
 // Constants
 //------------------------------------------------------------------------------
+
 // Cache line size for most modern x86-64 processors
 inline constexpr std::size_t CACHE_LINE_SIZE = 64;
 

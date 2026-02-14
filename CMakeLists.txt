@@ -54,5 +54,13 @@ endif()
 
 FetchContent_MakeAvailable(absl)
 
+FetchContent_Declare(
+  backward
+  GIT_REPOSITORY https://github.com/bombela/backward-cpp.git
+  GIT_TAG v1.6
+)
+
+FetchContent_MakeAvailable(backward)
+
 add_subdirectory(src)
 

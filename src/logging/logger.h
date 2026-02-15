@@ -14,7 +14,11 @@
 #include "absl/log/log_sink_registry.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_format.h"
+#define BACKWARD_HAS_UNWIND 1
+#define BACKWARD_HAS_BFD 1
 #include "backward.hpp"
+#undef BACKWARD_HAS_BFD
+#undef BACKWARD_HAS_UNWIND
 
 namespace utils { namespace logging {
 
@@ -44,10 +48,6 @@ class Logger {
   static bool initialized_;
   static std::unique_ptr<CustomLogSink> custom_sink_;
   static std::unique_ptr<backward::SignalHandling> signal_handler_;
-
-  // Signal handler implementation
-  static void InstallSignalHandlers();
-  static void CustomSignalHandler(int signal);
 };
 
 class CustomLogSink : public absl::LogSink {
@@ -60,6 +60,8 @@ class CustomLogSink : public absl::LogSink {
   ~CustomLogSink() override;
 
   void Send(const absl::LogEntry& entry) override;
+
+  friend class Logger;
 
  private:
   std::string log_dir_;

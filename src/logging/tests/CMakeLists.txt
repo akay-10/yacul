@@ -11,8 +11,3 @@ target_link_libraries(
   libbasics
   liblogging
 )
-# Ensure debug symbols
-target_compile_options(logger_test PRIVATE 
-  $<$<CONFIG:Debug>:-g -O0>
-  $<$<CONFIG:RelWithDebInfo>:-g -O2>
-)

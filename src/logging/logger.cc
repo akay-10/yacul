@@ -94,45 +94,16 @@ void Logger::EnableSignalHandlers() {
     absl::FailureSignalHandlerOptions options;
     options.symbolize_stacktrace = true;
     options.use_alternate_stack = true;
+    options.writerfn = [](const char* data) {
+      // Write to custom sink if available
+      if (custom_sink_ && custom_sink_->log_file_.is_open()) {
+        custom_sink_->log_file_ << data;
+        custom_sink_->log_file_.flush();
+      }
+    };
     absl::InstallFailureSignalHandler(options);
     return;
   }
-
-  #if defined(BACKWARD_HAS_LIBUNWIND)
-    LOG(INFO) << "  Using: libunwind";
-#elif defined(BACKWARD_HAS_BACKTRACE)
-    LOG(INFO) << "  Using: backtrace";
-#elif defined(BACKWARD_HAS_UNWIND)
-    LOG(INFO) << "  Using: unwind";
-#else
-    LOG(INFO) << "  Using: UNKNOWN";
-#endif
-
-    LOG(INFO) << "Backward-cpp Symbol Resolution:";
-    
-#if defined(BACKWARD_HAS_BFD)
-    LOG(INFO) << "  BFD: YES (best)";
-#else
-    LOG(INFO) << "  BFD: NO";
-#endif
-
-#if defined(BACKWARD_HAS_DW)
-    LOG(INFO) << "  DW: YES (good)";
-#else
-    LOG(INFO) << "  DW: NO";
-#endif
-
-#if defined(BACKWARD_HAS_DWARF)
-    LOG(INFO) << "  DWARF: YES (good)";
-#else
-    LOG(INFO) << "  DWARF: NO";
-#endif
-
-#if defined(BACKWARD_HAS_BACKTRACE_SYMBOL)
-    LOG(INFO) << "  BACKTRACE_SYMBOL: YES (basic)";
-#else
-    LOG(INFO) << "  BACKTRACE_SYMBOL: NO";
-#endif
 
   // Create backward signal handler with all common signals
   signal_handler_ = make_unique<backward::SignalHandling>(
@@ -178,6 +149,22 @@ void CustomLogSink::Send(const absl::LogEntry& entry) {
   }
   if (log_file_.is_open()) {
     log_file_ << entry.text_message_with_prefix_and_newline();
+
+    // Add stack trace for ERROR and FATAL logs
+    if (absl::GetFlag(FLAGS_enable_backtrace_cpp_signal_handlers) &&
+        entry.log_severity() >= absl::LogSeverity::kFatal) {
+      backward::StackTrace st;
+      st.load_here(32); // Capture up to 32 frames
+      backward::Printer p;
+      p.object = true;
+      p.color_mode = backward::ColorMode::never;
+      p.address = true;
+
+      std::ostringstream oss;
+      p.print(st, oss);
+      log_file_ << "\n--- Stack Trace ---\n" << oss.str() << "\n";
+    }
+
     log_file_.flush();
   }
 }

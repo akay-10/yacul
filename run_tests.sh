@@ -445,7 +445,7 @@ run_single_test() {
     "$test_exec"
     test_result=$?
   else
-    "$test_exec" >/dev/null
+    "$test_exec" >/dev/null 2>&1
     test_result=$?
   fi
 

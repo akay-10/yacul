@@ -7,9 +7,9 @@ TEST_DIR_NAME="tests"
 VERBOSE=false
 CONTINUE_ON_FAILURE=false
 FILTER=""
-TIMEOUT=0
 
-# Color output
+# Color output. Init colors only when this process's fd 1 (stdout) is connected
+# to a terminal.
 if [[ -t 1 ]]; then
   RED='\033[0;31m'
   GREEN='\033[0;32m'
@@ -51,14 +51,14 @@ log_debug() {
   fi
 }
 
-log_test_header() {
-  echo -e "${CYAN}=========================================${NC}"
-  echo -e "${CYAN}Running test: ${MAGENTA}$1${NC}"
+log_separator() {
   echo -e "${CYAN}=========================================${NC}"
 }
 
-log_separator() {
-  echo -e "${CYAN}=========================================${NC}"
+log_test_header() {
+  log_separator
+  echo -e "${CYAN}Running test: ${MAGENTA}$1${NC}"
+  log_separator
 }
 
 # Print usage
@@ -75,27 +75,24 @@ Options:
   -v, --verbose            Show detailed test output
   -c, --continue           Continue running tests even if one fails
   -f, --filter PATTERN     Only run tests matching pattern (grep regex)
-  -t, --timeout SECONDS    Set timeout for each test (0 = no timeout)
   -l, --list               List all available tests without running
-  -d, --debug              Show debug information about test discovery
   -h, --help               Show this help message
 
 Arguments:
-  SUBDIR                   Test subdirectory name (e.g., 'myproject')
+  SUBDIR                   Test subdirectory name (e.g., 'basic or hashing')
   TEST_NAME                Specific test executable name
 
 Examples:
-  $0                           # Run all tests
-  $0 -v                        # Run all tests with verbose output
-  $0 --filter "unit"           # Run only tests matching "unit"
-  $0 myproject test_basics     # Run specific test
-  $0 -l                        # List all available tests
-  $0 -d                        # Show debug info about test discovery
-  $0 -c -t 30                  # Run all tests with 30s timeout, continue on failure
+  $0                       # Run all tests
+  $0 -v                    # Run all tests with verbose output
+  $0 --filter "unit"       # Run only tests matching "unit"
+  $0 basic basic_test      # Run specific test
+  $0 -l                    # List all available tests
+  $0 -c                    # Run all tests and continue on failure
 
 Environment Variables:
-  TEST_BUILD_DIR               Override build directory (default: build)
-  TEST_BASE_DIR                Override base source directory (default: src)
+  TEST_BUILD_DIR           Override build directory (default: build)
+  TEST_BASE_DIR            Override base source directory (default: src)
 EOF
 }
 
@@ -103,11 +100,10 @@ EOF
 [ -n "$TEST_BUILD_DIR" ] && BUILD_DIR="$TEST_BUILD_DIR"
 [ -n "$TEST_BASE_DIR" ] && BASE_DIR="$TEST_BASE_DIR"
 
-# Parse command line arguments
-parse_args() {
+main() {
+  # Parse command line arguments
   local positional_args=()
   local list_only=false
-  local debug_mode=false
 
   while [[ $# -gt 0 ]]; do
     case $1 in
@@ -123,16 +119,8 @@ parse_args() {
       FILTER="$2"
       shift 2
       ;;
-    -t | --timeout)
-      TIMEOUT="$2"
-      shift 2
-      ;;
     -l | --list)
       list_only=true
-      shift
-      ;;
-    -d | --debug)
-      debug_mode=true
       shift
       ;;
     -h | --help)
@@ -151,106 +139,128 @@ parse_args() {
     esac
   done
 
-  if [ "$debug_mode" = true ]; then
-    VERBOSE=true
-    debug_test_discovery
-    exit 0
-  fi
+  check_build_dir
 
   if [ "$list_only" = true ]; then
-    list_tests
-    exit 0
+    discover_tests false
+    exit $?
   fi
 
-  # Restore positional arguments
+  # Parse subdir and test name to run specific tests from positional arguments.
   set -- "${positional_args[@]}"
+  TEST_SUBDIR_NAME="$1"
+  TEST_NAME="$2"
 
-  # Export for subprocesses
-  export TEST_SUBDIR_NAME="$1"
-  export TEST_NAME="$2"
-}
-
-# Debug test discovery
-debug_test_discovery() {
-  log_info "Debug: Test Discovery Information"
-  log_separator
-  echo "Build directory: $BUILD_DIR"
-  echo "Base directory: $BASE_DIR"
-  echo "Test directory name: $TEST_DIR_NAME"
-  echo ""
-
-  log_info "Searching in: $BUILD_DIR/$BASE_DIR/"
-
-  if [ ! -d "$BUILD_DIR/$BASE_DIR" ]; then
-    log_error "Base directory does not exist: $BUILD_DIR/$BASE_DIR"
-    return
+  if [ -n "$TEST_SUBDIR_NAME" ] && [ -n "$TEST_NAME" ]; then
+    # Run specific test
+    run_specific_test "$TEST_SUBDIR_NAME" "$TEST_NAME"
+    exit $?
+  else
+    # Run all tests
+    run_all_tests
+    exit $?
   fi
-
-  log_info "Subdirectories found:"
-  for sub_dir in "$BUILD_DIR/$BASE_DIR/"*; do
-    if [ -d "$sub_dir" ]; then
-      local subdir_name=$(basename "$sub_dir")
-      echo "  - $subdir_name"
-
-      local test_dir="$sub_dir/$TEST_DIR_NAME"
-      if [ -d "$test_dir" ]; then
-        echo "    └─ Test directory exists: $test_dir"
-
-        # List all files in test directory
-        echo "       Files in test directory:"
-        for file in "$test_dir"/*; do
-          if [ -e "$file" ]; then
-            local filename=$(basename "$file")
-            if [ -d "$file" ]; then
-              echo "       ├─ [DIR] $filename"
-            elif [ -x "$file" ]; then
-              echo "       ├─ [EXECUTABLE] $filename"
-            elif [ -f "$file" ]; then
-              echo "       ├─ [FILE] $filename"
-            fi
-          fi
-        done
-      else
-        echo "    └─ No test directory found at: $test_dir"
-      fi
-      echo ""
-    fi
-  done
-
-  log_info "Tests identified by is_test_executable():"
-  for sub_dir in "$BUILD_DIR/$BASE_DIR/"*; do
-    if [ ! -d "$sub_dir" ]; then
-      continue
-    fi
-
-    local test_dir="$sub_dir/$TEST_DIR_NAME"
-    if [ -d "$test_dir" ]; then
-      while IFS= read -r -d '' file; do
-        if is_test_executable "$file"; then
-          echo "  ✓ $(basename "$(dirname "$(dirname "$file")")")/$(basename "$file")"
-        else
-          echo "  ✗ $(basename "$(dirname "$(dirname "$file")")")/$(basename "$file") (rejected)"
-        fi
-      done < <(find "$test_dir" -maxdepth 1 -type f -print0 2>/dev/null | sort -z)
-    fi
-  done
-
-  log_separator
 }
 
 # Check if build directory exists
 check_build_dir() {
   if [ ! -d "$BUILD_DIR" ] || [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
     log_warning "Build directory not found or not configured."
-
     if [ -f "./build.sh" ]; then
-      log_info "Building project first..."
-      ./build.sh build
+      log_info "Please build the project first using './build.sh build'"
     else
-      log_error "Please run './build.sh build' first"
+      log_error "./build.sh not found. Please build the project first manually"
+      log_error "Default build dir: $BUILD_DIR, available env var: TEST_BUILD_DIR to override default"
       exit 1
     fi
   fi
+}
+
+# Discover tests
+discover_tests() {
+  local dump_tests_lists=$1
+
+  log_info "Searching for tests in: $BUILD_DIR/$BASE_DIR/" >&2
+  log_separator >&2
+  log_debug "Build directory: $BUILD_DIR"
+  log_debug "Base directory: $BASE_DIR"
+  log_debug "Test directory name: $TEST_DIR_NAME"
+
+  if [ ! -d "$BUILD_DIR/$BASE_DIR" ]; then
+    log_error "Base directory does not exist: $BUILD_DIR/$BASE_DIR" >&2
+    return 1
+  fi
+
+  local tests=()
+
+  for sub_dir in "$BUILD_DIR/$BASE_DIR/"*; do
+    while IFS= read -r test_exec; do
+      [ -n "$test_exec" ] && tests+=("$test_exec")
+    done < <(discover_tests_subdir "$sub_dir")
+  done
+
+  log_separator >&2
+  if [ "$dump_tests_lists" = true ]; then
+    printf '%s\n' "${tests[@]}"
+  fi
+}
+
+# Discover tests in a subdir
+discover_tests_subdir() {
+  local sub_dir="$1"
+  local subdir_name=""
+  subdir_name=$(basename "$sub_dir")
+
+  local tests=()
+
+  if [ -d "$sub_dir" ]; then
+    log_debug "Discovering tests in $sub_dir"
+    log_debug "  - ${YELLOW}[DIR]${NC} $subdir_name"
+    local test_dir="$sub_dir/$TEST_DIR_NAME"
+
+    if [ -d "$test_dir" ]; then
+      log_debug "    └─ Test directory exists: $test_dir"
+
+      for file in "$test_dir"/*; do
+        if [ -e "$file" ]; then
+          local filename=""
+          filename=$(basename "$file")
+
+          if [ -d "$file" ]; then
+            log_debug "       ├─ ${YELLOW}[DIR]${NC} $filename"
+          elif [ -x "$file" ]; then
+            log_debug "       ├─ ${GREEN}[EXE]${NC} $filename"
+          elif [ -f "$file" ]; then
+            log_debug "       ├─ ${BLUE}[FILE]${NC} $filename"
+          fi
+        fi
+      done
+
+      # Again search using find
+      while IFS= read -r -d '' file; do
+        if is_test_executable "$file"; then
+          tests+=("$file")
+          log_debug "Added test: $file"
+        fi
+      done < <(find "$test_dir" -maxdepth 1 -type f -executable -print0 2>/dev/null | sort -z)
+
+    else
+      log_debug "    └─ No test directory found at: $test_dir"
+    fi
+  elif [ -f "$sub_dir" ]; then
+    log_debug "  - ${BLUE}[FILE/EXE]${NC} $subdir_name"
+  else
+    log_debug "  - ${RED}[UNKNOWN]${NC} $subdir_name"
+  fi
+
+  if [ ${#tests[@]} -gt 0 ]; then
+    log_info "${CYAN}$subdir_name${NC}:" >&2
+    for test in "${tests[@]}"; do
+      log_info "  - ${GREEN}$(basename "$test")${NC}" >&2
+    done
+  fi
+
+  printf '%s\n' "${tests[@]}"
 }
 
 # Check if a file is a test executable
@@ -268,7 +278,8 @@ is_test_executable() {
   fi
 
   # Get basename for pattern matching
-  local basename=$(basename "$file")
+  local basename=""
+  basename=$(basename "$file")
 
   # Exclude CMake-related patterns
   case "$basename" in
@@ -285,11 +296,11 @@ is_test_executable() {
 
   # If file command is available, use it for better detection
   if command -v file &>/dev/null; then
-    local filetype=$(file -b "$file" 2>/dev/null)
+    local filetype=""
+    filetype=$(file -b "$file" 2>/dev/null)
 
     # Check if it's actually an executable binary
     if echo "$filetype" | grep -qE "(ELF.*executable|Mach-O.*executable|PE32.*executable)"; then
-      log_debug "Accepted $file: executable binary"
       return 0
     fi
 
@@ -303,205 +314,38 @@ is_test_executable() {
   return 0
 }
 
-# Find all test executables
-find_all_tests() {
-  local tests=()
-
-  log_debug "Searching for tests in: $BUILD_DIR/$BASE_DIR/*/tests/"
-
-  for sub_dir in "$BUILD_DIR/$BASE_DIR/"*; do
-    if [ ! -d "$sub_dir" ]; then
-      continue
-    fi
-
-    local subdir_name=$(basename "$sub_dir")
-    local test_dir="$sub_dir/$TEST_DIR_NAME"
-
-    log_debug "Checking test directory: $test_dir"
-
-    if [ -d "$test_dir" ]; then
-      # Only look at files directly in the test directory (maxdepth 1)
-      # Exclude CMakeFiles and other build artifacts
-      while IFS= read -r -d '' file; do
-        if is_test_executable "$file"; then
-          tests+=("$file")
-          log_debug "Added test: $file"
-        fi
-      done < <(find "$test_dir" -maxdepth 1 -type f -executable -print0 2>/dev/null | sort -z)
-    fi
-  done
-
-  printf '%s\n' "${tests[@]}"
-}
-
-# List all available tests
-list_tests() {
-  # Temporarily disable exit on error for this function
-  set +e
-
-  check_build_dir
-
-  log_info "Available tests:"
-  echo ""
-
-  local count=0
-
-  for sub_dir in "$BUILD_DIR/$BASE_DIR/"*; do
-    [ ! -d "$sub_dir" ] && continue
-
-    local subdir_name=$(basename "$sub_dir")
-    local test_dir="$sub_dir/$TEST_DIR_NAME"
-
-    [ ! -d "$test_dir" ] && continue
-
-    local subdir_tests=()
-
-    # Use maxdepth 1 to only look in the test directory itself, not subdirectories
-    while IFS= read -r -d '' file; do
-      if is_test_executable "$file"; then
-        subdir_tests+=("$(basename "$file")")
-      fi
-    done < <(find "$test_dir" -maxdepth 1 -type f -executable -print0 2>/dev/null | sort -z)
-
-    if [ ${#subdir_tests[@]} -gt 0 ]; then
-      echo -e "${CYAN}$subdir_name:${NC}"
-      for test_name in "${subdir_tests[@]}"; do
-        echo "  - $test_name"
-        count=$((count + 1))
-      done
-      echo ""
-    fi
-  done
-
-  if [ $count -eq 0 ]; then
-    log_warning "No test executables found"
-    echo ""
-    log_info "Searched in: $BUILD_DIR/$BASE_DIR/*/tests/"
-    log_info "Run with --debug flag for more information:"
-    echo "  $0 --debug"
-  else
-    log_success "Total: $count tests"
-  fi
-
-  # Re-enable exit on error
-  set -e
-}
-
-# Run a single test with optional timeout
-run_single_test() {
-  local test_exec="$1"
-  local test_name=$(basename "$test_exec")
-  local subdir=$(basename "$(dirname "$(dirname "$test_exec")")")
-
-  # Apply filter if specified
-  if [ -n "$FILTER" ]; then
-    if ! echo "$test_name" | grep -qE "$FILTER"; then
-      log_debug "Skipping $test_name (doesn't match filter)"
-      return 2 # Return 2 to indicate skipped
-    fi
-  fi
-
-  log_test_header "$subdir/$test_name"
-
-  local start_time=$(date +%s)
-  local test_result=0
-
-  # Temporarily disable exit on error for test execution
-  set +e
-
-  if [ $TIMEOUT -gt 0 ]; then
-    if command -v timeout &>/dev/null; then
-      if [ "$VERBOSE" = true ]; then
-        timeout $TIMEOUT "$test_exec"
-        test_result=$?
-      else
-        timeout $TIMEOUT "$test_exec" >/dev/null 2>&1
-        test_result=$?
-      fi
-
-      if [ $test_result -eq 124 ]; then
-        log_error "Test timed out after ${TIMEOUT}s"
-        set -e
-        return 1
-      fi
-    else
-      log_warning "timeout command not available, running without timeout"
-      if [ "$VERBOSE" = true ]; then
-        "$test_exec"
-        test_result=$?
-      else
-        "$test_exec" >/dev/null 2>&1
-        test_result=$?
-      fi
-    fi
-  else
-    if [ "$VERBOSE" = true ]; then
-      "$test_exec"
-      test_result=$?
-    else
-      "$test_exec" >/dev/null 2>&1
-      test_result=$?
-    fi
-  fi
-
-  # Re-enable exit on error
-  set -e
-
-  local end_time=$(date +%s)
-  local duration=$((end_time - start_time))
-
-  if [ $test_result -eq 0 ]; then
-    log_success "Test passed (${duration}s)"
-    return 0
-  else
-    log_error "Test failed with exit code $test_result (${duration}s)"
-    return 1
-  fi
-}
-
 # Run all tests
 run_all_tests() {
-  # Temporarily disable exit on error to allow test failures
-  set +e
-
-  log_info "Discovering tests..."
-
   local tests=()
   while IFS= read -r test_exec; do
     [ -n "$test_exec" ] && tests+=("$test_exec")
-  done < <(find_all_tests)
+  done < <(discover_tests true)
 
-  # Re-enable for the test discovery part
-  set -e
-
-  if [ ${#tests[@]} -eq 0 ]; then
+  if [ "${#tests[@]}" -eq 0 ]; then
     log_warning "No test executables found in $BUILD_DIR/$BASE_DIR/*/tests/"
-    log_info "Run with --debug flag for more information:"
-    echo "  $0 --debug"
-    exit 0
+    log_info "Run with -v flag for more information: $0 -v"
+    return 0
   fi
 
-  local total=${#tests[@]}
+  local total="${#tests[@]}"
   local passed=0
   local failed=0
   local skipped=0
 
   log_info "Found $total test(s)"
   [ -n "$FILTER" ] && log_info "Filter: '$FILTER'"
-  [ $TIMEOUT -gt 0 ] && log_info "Timeout: ${TIMEOUT}s per test"
-  echo ""
 
-  local overall_start=$(date +%s)
+  local overall_start=0
+  local overall_end=0
 
-  # Disable exit on error for test execution
-  set +e
+  overall_start="$(date +%s)"
 
   for test_exec in "${tests[@]}"; do
     local result
     run_single_test "$test_exec"
     result=$?
 
-    case $result in
+    case "$result" in
     0)
       passed=$((passed + 1))
       ;;
@@ -516,14 +360,10 @@ run_all_tests() {
       skipped=$((skipped + 1))
       ;;
     esac
-    echo ""
   done
 
-  # Re-enable exit on error
-  set -e
-
-  local overall_end=$(date +%s)
-  local overall_duration=$((overall_end - overall_start))
+  overall_end="$(date +%s)"
+  local overall_duration="$((overall_end - overall_start))"
 
   # Summary
   log_separator
@@ -531,31 +371,32 @@ run_all_tests() {
   log_separator
   echo -e "  Total:    $total"
   echo -e "  ${GREEN}Passed:   $passed${NC}"
-  [ $failed -gt 0 ] && echo -e "  ${RED}Failed:   $failed${NC}" || echo -e "  Failed:   $failed"
-  [ $skipped -gt 0 ] && echo -e "  ${YELLOW}Skipped:  $skipped${NC}"
+  [ "$failed" -gt 0 ] && echo -e "  ${RED}Failed:   $failed${NC}"
+  [ "$skipped" -gt 0 ] && echo -e "  ${YELLOW}Skipped:  $skipped${NC}"
   echo -e "  Duration: ${overall_duration}s"
   log_separator
 
-  if [ $failed -gt 0 ]; then
+  if [ "$failed" -gt 0 ]; then
     log_error "Some tests failed!"
-    exit 1
+    return 1
   else
     log_success "All tests passed!"
   fi
+
+  return 0
 }
 
 # Run specific test
 run_specific_test() {
-  local test_subdir="$BUILD_DIR/$BASE_DIR/$TEST_SUBDIR_NAME/$TEST_DIR_NAME"
-  local test_exec="$test_subdir/$TEST_NAME"
+  local test_subdir="$BUILD_DIR/$BASE_DIR/$1/$TEST_DIR_NAME"
+  local test_exec="$test_subdir/$2"
 
   if [ -f "$test_exec" ] && [ -x "$test_exec" ]; then
     run_single_test "$test_exec"
-    exit $?
+    return $?
   else
     log_error "Test executable '$test_exec' not found or not executable"
-    echo ""
-    log_info "Available tests in '$test_subdir':"
+    log_info "Available tests in $(dirname "$test_subdir"):"
     if [ -d "$test_subdir" ]; then
       local found_tests=false
       while IFS= read -r -d '' file; do
@@ -571,22 +412,54 @@ run_specific_test() {
     else
       echo "  (test directory not found)"
     fi
-    exit 1
+    return 1
+  fi
+}
+
+# Run a single test
+run_single_test() {
+  local test_exec="$1"
+  local test_name=""
+  local subdir=""
+
+  test_name=$(basename "$test_exec")
+  subdir=$(basename "$(dirname "$(dirname "$test_exec")")")
+
+  # Apply filter if specified
+  if [ -n "$FILTER" ]; then
+    if ! echo "$test_name" | grep -qE "$FILTER"; then
+      log_debug "Skipping $test_name (doesn't match filter)"
+      return 2 # Return 2 to indicate skipped
+    fi
+  fi
+
+  log_test_header "$subdir $test_name"
+
+  local start_time=0
+  local end_time=0
+  local test_result=0
+
+  start_time=$(date +%s)
+
+  if [ "$VERBOSE" = true ]; then
+    "$test_exec"
+    test_result=$?
+  else
+    "$test_exec" >/dev/null
+    test_result=$?
+  fi
+
+  end_time=$(date +%s)
+  local duration=$((end_time - start_time))
+
+  if [ $test_result -eq 0 ]; then
+    log_success "Test passed (${duration}s)"
+    return 0
+  else
+    log_error "Test failed with exit code $test_result (${duration}s)"
+    return 1
   fi
 }
 
 # Main execution
-main() {
-  parse_args "$@"
-  check_build_dir
-
-  if [ -n "$TEST_SUBDIR_NAME" ] && [ -n "$TEST_NAME" ]; then
-    # Run specific test
-    run_specific_test
-  else
-    # Run all tests
-    run_all_tests
-  fi
-}
-
 main "$@"

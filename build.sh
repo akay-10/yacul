@@ -9,7 +9,6 @@ BUILD_TYPE="Release"
 VERBOSE=false
 PARALLEL_JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 RUN_TESTS=false
-INSTALL=false
 INSTALL_PREFIX=""
 SANITIZERS=""
 CCACHE_ENABLED=false
@@ -308,7 +307,8 @@ configure_project() {
 
   mkdir -p "$BUILD_DIR"
 
-  local cmake_args=$(build_cmake_args)
+  local cmake_args=""
+  cmake_args=$(build_cmake_args)
 
   log_debug "CMake command: $CMAKE_CMD $cmake_args"
 
@@ -339,9 +339,11 @@ build_project() {
 
   log_debug "Build command: $CMAKE_CMD $build_args"
 
-  local start_time=$(date +%s)
-  $CMAKE_CMD $build_args
-  local end_time=$(date +%s)
+  local start_time=""
+  local end_time=""
+  start_time=$(date +%s)
+  $CMAKE_CMD "$build_args"
+  end_time=$(date +%s)
   local duration=$((end_time - start_time))
 
   log_success "Build complete! (took ${duration}s)"
@@ -382,7 +384,7 @@ install_project() {
 
   log_debug "Install command: $CMAKE_CMD $install_args"
 
-  $CMAKE_CMD $install_args
+  $CMAKE_CMD "$install_args"
 
   log_success "Installation complete!"
 }

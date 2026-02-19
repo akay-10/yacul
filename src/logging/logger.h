@@ -2,15 +2,9 @@
 #define UTILS_LOGGING_LOGGER_H
 
 #include "absl/flags/flag.h"
-#include "absl/flags/parse.h"
 #include "absl/log/check.h"
-#include "absl/log/globals.h"
-#include "absl/log/initialize.h"
 #include "absl/log/log.h"
-#include "absl/log/log_sink.h"
-#include "absl/log/log_sink_registry.h"
 #include "absl/log/vlog_is_on.h"
-#include "absl/strings/str_format.h"
 #include "backward.hpp"
 #include "basic/basic.h"
 

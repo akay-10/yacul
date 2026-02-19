@@ -24,10 +24,7 @@ target_link_libraries(
   absl::flags
   absl::flags_parse
   absl::log
-  absl::log_globals
   absl::log_initialize
-  absl::strings
-  absl::str_format
   absl::vlog_is_on
 )
 

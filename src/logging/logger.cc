@@ -2,8 +2,13 @@
 #include <filesystem> // for filesystem
 #include <sstream>
 
-#include "logger.h"
+#include "absl/flags/parse.h"
+#include "absl/log/globals.h"
+#include "absl/log/initialize.h"
+#include "absl/log/internal/globals.h"
+#include "absl/log/log_sink_registry.h"
 #include "backward.hpp"
+#include "logger.h"
 
 using namespace std;
 namespace fs = filesystem;
@@ -41,6 +46,9 @@ void Logger::Init(int argc, char** argv, const string& app_name,
 
   // Initialize abseil logging
   absl::InitializeLog();
+
+  // Hacky way for disabling absl's own stack dump on check failures
+  absl::log_internal::SetMaxFramesInLogStackTrace(0);
 
   // Set default log level to INFO 
   absl::SetMinLogLevel(absl::LogSeverityAtLeast::kInfo);

@@ -1,8 +1,6 @@
 #ifndef UTILS_LOGGING_LOGGER_H
 #define UTILS_LOGGING_LOGGER_H
 
-#include "absl/debugging/failure_signal_handler.h"
-#include "absl/debugging/symbolize.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/check.h"
@@ -13,11 +11,7 @@
 #include "absl/log/log_sink_registry.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_format.h"
-#define BACKWARD_HAS_UNWIND 1
-#define BACKWARD_HAS_BFD 1
 #include "backward.hpp"
-#undef BACKWARD_HAS_BFD
-#undef BACKWARD_HAS_UNWIND
 #include "basic/basic.h"
 
 namespace utils { namespace logging {
@@ -43,11 +37,15 @@ class Logger {
   static bool IsInitialized() { return initialized_; }
 
  private:
+  static void WriteCrashTrace(int signal);
+
+ private:
   DISALLOW_COPY_AND_ASSIGN(Logger);
 
   static bool initialized_;
+  static bool signal_handler_initialized_;
+  static std::vector<int> installed_signals_;
   static std::unique_ptr<CustomLogSink> custom_sink_;
-  static std::unique_ptr<backward::SignalHandling> signal_handler_;
 };
 
 class CustomLogSink : public absl::LogSink {
@@ -64,13 +62,17 @@ class CustomLogSink : public absl::LogSink {
   friend class Logger;
 
  private:
+  void OpenLogFile();
+
+  std::string GetLogFileName() const;
+
+  void BackwardPrinter(int signal);
+
+ private:
   std::string log_dir_;
   std::ofstream log_file_;
   std::string app_name_;
   std::mutex file_mutex_;
-
-  void OpenLogFile();
-  std::string GetLogFileName() const;
 };
 
 }} // namespace utils::logging

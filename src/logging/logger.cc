@@ -1,7 +1,9 @@
+#include <csignal>
 #include <filesystem> // for filesystem
+#include <sstream>
 
 #include "logger.h"
-#include "absl/flags/internal/flag.h"
+#include "backward.hpp"
 
 using namespace std;
 namespace fs = filesystem;
@@ -11,15 +13,21 @@ ABSL_FLAG(std::string, log_dir, "/home/akayhomie/code/utils/logs",
           "Directory to dump logs");
 ABSL_FLAG(bool, enable_custom_log_sink, true,
           "Enable custom log sink for directory output");
-ABSL_FLAG(bool, enable_backtrace_cpp_signal_handlers, true,
-          "Enable backward-cpp signal handlers for crash reporting");
+ABSL_FLAG(bool, enable_snippet_for_backward_cpp, false,
+          "Enable small function call snippet in the stack trace on catching "
+          "a signal");
 
 namespace utils { namespace logging {
 
+//------------------------------------------------------------------------------
+
 // Initialize static members
 bool Logger::initialized_ = false;
+bool Logger::signal_handler_initialized_ = false;
+vector<int> Logger::installed_signals_;
 CustomLogSink::UPtr Logger::custom_sink_ = nullptr;
-unique_ptr<backward::SignalHandling> Logger::signal_handler_ = nullptr;
+
+//------------------------------------------------------------------------------
 
 void Logger::Init(int argc, char** argv, const string& app_name,
                   const string& custom_log_dir) {
@@ -58,14 +66,11 @@ void Logger::Init(int argc, char** argv, const string& app_name,
     absl::AddLogSink(custom_sink_.get());
   }
 
-  if (!absl::GetFlag(FLAGS_enable_backtrace_cpp_signal_handlers)) {
-    // Initialize Abseil symbolizer first
-    absl::InitializeSymbolizer(app_name.c_str());
-  }
-
   initialized_ = true;
   LOG(INFO) << "Logger initialized successfully. Log directory: " << log_dir;
 }
+
+//------------------------------------------------------------------------------
 
 void Logger::Shutdown() {
   if (!initialized_) {
@@ -78,64 +83,86 @@ void Logger::Shutdown() {
     absl::RemoveLogSink(custom_sink_.get());
     custom_sink_.reset();
   }
-  // Disable signal handlers
-  if (signal_handler_) {
-    signal_handler_.reset();
-  }
+  DisableSignalHandlers();
   initialized_ = false;
 }
 
+//------------------------------------------------------------------------------
+
 void Logger::EnableSignalHandlers() {
-  if (signal_handler_) {
+  if (signal_handler_initialized_) {
     LOG(WARNING) << "Signal handlers already enabled";
     return;
   }
-  if (!absl::GetFlag(FLAGS_enable_backtrace_cpp_signal_handlers)) {
-    LOG(INFO) << "Backward-cpp signal handlers disabled by flag";
-    // Setup signal handling
-    absl::FailureSignalHandlerOptions options;
-    options.symbolize_stacktrace = true;
-    options.use_alternate_stack = true;
-    options.writerfn = [](const char* data) {
-      // Write to custom sink if available
-      if (custom_sink_ && custom_sink_->log_file_.is_open()) {
-        custom_sink_->log_file_ << data;
-        custom_sink_->log_file_.flush();
-      }
-    };
-    absl::InstallFailureSignalHandler(options);
-    return;
+
+  // Install custom signal handlers manually
+  struct sigaction sa;
+  sa.sa_flags = SA_SIGINFO;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_sigaction = [](int sig, siginfo_t* info, void* ctx) {
+    Logger::WriteCrashTrace(sig);
+    ::signal(sig, SIG_DFL);
+    ::raise(sig);
+  };
+  
+  // Track installed signals
+  installed_signals_ = {
+    SIGSEGV,
+    SIGABRT,
+    SIGFPE,
+    SIGILL,
+    SIGBUS,
+    SIGTERM,
+    SIGINT,
+    SIGQUIT,
+    SIGSYS,
+    SIGPIPE
+  };
+  
+  for (int sig : installed_signals_) {
+    sigaction(sig, &sa, nullptr);
   }
 
-  // Create backward signal handler with all common signals
-  signal_handler_ = make_unique<backward::SignalHandling>(
-    initializer_list<int>{
-      SIGSEGV, // Segmentation fault
-      SIGABRT, // Abort signal
-      SIGFPE,  // Floating point exception
-      SIGILL,  // Illegal instruction
-      SIGBUS,  // Bus error
-      SIGTERM, // Termination request
-      SIGINT,  // Interrupt from keyboard (Ctrl+C)
-      SIGQUIT, // Quit from keyboard
-      SIGSYS,  // Bad system call
-      SIGPIPE  // Broken pipe
-    }
-  );
+  signal_handler_initialized_ = true;
+
   LOG(INFO) << "Signal handlers enabled with backward-cpp";
 }
 
-void Logger::DisableSignalHandlers() {
-  if (signal_handler_) {
-    signal_handler_.reset();
-    LOG(INFO) << "Signal handlers disabled";
-  }
+//------------------------------------------------------------------------------
+
+void Logger::WriteCrashTrace(int signal) {
+  if (!custom_sink_ || !custom_sink_->log_file_.is_open()) {
+    return;
+  } 
+  custom_sink_->BackwardPrinter(signal);
 }
+
+//------------------------------------------------------------------------------
+
+void Logger::DisableSignalHandlers() {
+  if (!signal_handler_initialized_) {
+    LOG(WARNING) << "Signal handlers not enabled";
+    return;
+  }
+  
+  // Restore default handlers for tracked signals
+  for (int sig : installed_signals_) {
+    ::signal(sig, SIG_DFL);
+  }
+  
+  installed_signals_.clear();
+  signal_handler_initialized_ = false;
+  LOG(INFO) << "Signal handlers disabled and restored to default";
+}
+
+//------------------------------------------------------------------------------
 
 CustomLogSink::CustomLogSink(const string& log_dir, const string& app_name) :
   log_dir_(log_dir), app_name_(app_name) {
   OpenLogFile();
 }
+
+//------------------------------------------------------------------------------
 
 CustomLogSink::~CustomLogSink() {
   lock_guard<mutex> lock(file_mutex_);
@@ -144,6 +171,8 @@ CustomLogSink::~CustomLogSink() {
   }
 }
 
+//------------------------------------------------------------------------------
+
 void CustomLogSink::Send(const absl::LogEntry& entry) {
   lock_guard<mutex> lock(file_mutex_);
   if (!log_file_.is_open()) {
@@ -151,25 +180,32 @@ void CustomLogSink::Send(const absl::LogEntry& entry) {
   }
   if (log_file_.is_open()) {
     log_file_ << entry.text_message_with_prefix_and_newline();
-
-    // Add stack trace for ERROR and FATAL logs
-    if (absl::GetFlag(FLAGS_enable_backtrace_cpp_signal_handlers) &&
-        entry.log_severity() >= absl::LogSeverity::kFatal) {
-      backward::StackTrace st;
-      st.load_here(32); // Capture up to 32 frames
-      backward::Printer p;
-      p.object = true;
-      p.color_mode = backward::ColorMode::never;
-      p.address = true;
-
-      std::ostringstream oss;
-      p.print(st, oss);
-      log_file_ << "\n--- Stack Trace ---\n" << oss.str() << "\n";
-    }
-
     log_file_.flush();
   }
 }
+
+//------------------------------------------------------------------------------
+
+void CustomLogSink::BackwardPrinter(int signal) {
+  backward::StackTrace st;
+  st.load_here(16); // Capture up to 16 frames
+
+  backward::Printer p;
+  p.object = true;
+  p.color_mode = backward::ColorMode::never;
+  p.address = true;
+  p.snippet = absl::GetFlag(FLAGS_enable_snippet_for_backward_cpp);
+
+  std::ostringstream oss;
+  oss << "\n=== CRASH DETECTED (Signal: " << signal << ") ===\n";
+  p.print(st, oss);
+  oss << "\n=== END CRASH TRACE ===\n";
+  std::cerr << oss.str();
+  log_file_ << oss.str();
+  log_file_.flush();
+}
+
+//------------------------------------------------------------------------------
 
 void CustomLogSink::OpenLogFile() {
   string filename = GetLogFileName();
@@ -182,6 +218,8 @@ void CustomLogSink::OpenLogFile() {
   }
 }
 
+//------------------------------------------------------------------------------
+
 string CustomLogSink::GetLogFileName() const {
   // Generate filename with timestamp and process ID
   auto now = chrono::system_clock::now();
@@ -191,5 +229,7 @@ string CustomLogSink::GetLogFileName() const {
       << "_" << getpid() << ".log";
   return oss.str();
 }
+
+//------------------------------------------------------------------------------
 
 }} // namespace utils::logging

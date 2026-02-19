@@ -8,7 +8,6 @@ target_include_directories(
 )
 target_link_libraries(
   os_usage_test
-  libbasics
   libhashing
   GTest::gtest_main
 )
@@ -23,7 +22,6 @@ target_include_directories(
 )
 target_link_libraries(
   hash_test
-  libbasics
   libhashing
   GTest::gtest_main
 )

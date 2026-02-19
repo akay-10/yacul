@@ -1,9 +1,8 @@
 #ifndef UTILS_HASHING_HASH_H 
 #define UTILS_HASHING_HASH_H
 
-#include "basic/basic.h"
-#include "os_murmur_hash3.h"
 #include "absl/hash/hash.h"
+#include "os_murmur_hash3.h"
 
 namespace utils { namespace hashing {
 

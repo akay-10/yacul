@@ -1,6 +1,8 @@
 #ifndef UTILS_HASHING_BLOOM_FILTER_H 
 #define UTILS_HASHING_BLOOM_FILTER_H
 
+#include <memory> // shared_ptr
+
 #include "basic/basic.h"
 
 namespace utils { namespace hashing {

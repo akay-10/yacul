@@ -1,3 +1,5 @@
+#include <filesystem> // for filesystem
+
 #include "logger.h"
 #include "absl/flags/internal/flag.h"
 

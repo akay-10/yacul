@@ -4,8 +4,8 @@ using namespace std;
 
 namespace utils { namespace hashing {
 
-BloomFilter::BloomFilter() { cout << "Init" << endl; }
+BloomFilter::BloomFilter() { }
 
-BloomFilter::~BloomFilter() { cout << "Destroying" << endl; }
+BloomFilter::~BloomFilter() { }
 
 }} // namespace utils::hashing

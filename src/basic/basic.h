@@ -1,31 +1,8 @@
 #ifndef UTILS_BASIC_BASIC_H
 #define UTILS_BASIC_BASIC_H
 
-//------------------------------------------------------------------------------
-// Most used headers
-//------------------------------------------------------------------------------
-
-#include <iostream> // For cout, cin, endl
-#include <memory> // For shared_ptr, unique_ptr
-#include <cstring> // For strlen
-#include <unordered_map> // For unordered_map
-#include <unordered_set> // For unordered_set
-#include <vector> // For vector
-#include <string> // For string
-#include <utility> // For pair, make_pair
-#include <tuple> // For tuple, make_tuple
-#include <type_traits> // For type traits like is_integral, is_same
-#include <cstdint> // For fixed-width integer types like uint32_t
-#include <cassert> // For assert
-#include <functional> // For std::hash
-#include <mutex> // For std::mutex
-#include <thread> // For std::thread
-#include <csignal> // For signal handling
-#include <ctime> // For time functions
-#include <iomanip> // For std::setw, std::setfill
-#include <sstream> // For std::stringstream
-#include <filesystem> // For filesystem operations
-#include <fstream> // For file I/O
+#include <ostream> // std::ostream
+#include <cstddef> // size_t 
 
 //------------------------------------------------------------------------------
 // Common class macros

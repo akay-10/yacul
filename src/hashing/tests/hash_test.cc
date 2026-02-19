@@ -1,7 +1,5 @@
-#include "basic/basic.h"
-#include "hash.h"
 #include "gtest/gtest.h"
-#include <climits>
+#include "hash.h"
 
 using namespace utils::hashing;
 using namespace std;

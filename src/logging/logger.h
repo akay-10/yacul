@@ -1,7 +1,6 @@
 #ifndef UTILS_LOGGING_LOGGER_H
 #define UTILS_LOGGING_LOGGER_H
 
-#include "basic/basic.h"
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/symbolize.h"
 #include "absl/flags/flag.h"
@@ -19,6 +18,7 @@
 #include "backward.hpp"
 #undef BACKWARD_HAS_BFD
 #undef BACKWARD_HAS_UNWIND
+#include "basic/basic.h"
 
 namespace utils { namespace logging {
 

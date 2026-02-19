@@ -1,6 +1,5 @@
-#include "basic.h"
-#include "os_murmur_hash3.h"
 #include "gtest/gtest.h"
+#include "os_murmur_hash3.h"
 
 TEST(OSUsageTest, MurmuruHash3Test) {
   const char *input = "Hello world!";

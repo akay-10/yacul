@@ -1,6 +1,8 @@
 #ifndef UTILS_SUBUTIL_FILE_H 
 #define UTILS_SUBUTIL_FILE_H
 
+#include <memory> // shared_ptr
+
 #include "basic/basic.h"
 
 namespace utils { namespace snippet {

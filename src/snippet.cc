@@ -4,9 +4,9 @@ using namespace std;
 
 namespace utils { namespace snippet {
 
-Snippet::Snippet() { cout << "Init" << endl; }
+Snippet::Snippet() { }
 
-Snippet::~Snippet() { cout << "Destroying" << endl; }
+Snippet::~Snippet() { }
 
 }} // namespace utils::hashing
 

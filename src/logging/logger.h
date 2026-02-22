@@ -18,9 +18,7 @@ class Logger {
   // Delete constructors for static class
   Logger() = delete;
 
-  static void Init(int argc, char** argv,
-                   const std::string& app_name = "app",
-                   const std::string& custom_log_dir = "");
+  static void Init(int argc, char** argv);
 
   static void Shutdown();
 
@@ -63,6 +61,7 @@ class CustomLogSink : public absl::LogSink {
   void BackwardPrinter(int signal);
 
  private:
+  std::atomic<bool> skip_log_to_file_;
   std::string log_dir_;
   std::ofstream log_file_;
   std::string app_name_;

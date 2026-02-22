@@ -26,6 +26,7 @@ target_link_libraries(
   absl::log
   absl::log_initialize
   absl::vlog_is_on
+  absl::strings
 )
 
 find_library(DL_LIB dl)

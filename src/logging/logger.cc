@@ -7,6 +7,7 @@
 #include "absl/log/initialize.h"
 #include "absl/log/internal/globals.h"
 #include "absl/log/log_sink_registry.h"
+#include "absl/strings/str_split.h"
 #include "backward.hpp"
 #include "logger.h"
 
@@ -14,7 +15,7 @@ using namespace std;
 namespace fs = filesystem;
 
 // Define flags for log directory and prefix
-ABSL_FLAG(std::string, log_dir, "/home/akayhomie/code/utils/logs",
+ABSL_FLAG(std::string, log_dir, "",
           "Directory to dump logs");
 ABSL_FLAG(bool, enable_custom_log_sink, true,
           "Enable custom log sink for directory output");
@@ -34,8 +35,7 @@ CustomLogSink::UPtr Logger::custom_sink_ = nullptr;
 
 //------------------------------------------------------------------------------
 
-void Logger::Init(int argc, char** argv, const string& app_name,
-                  const string& custom_log_dir) {
+void Logger::Init(int argc, char** argv) {
   if (initialized_) {
     LOG(WARNING) << "Logger already initialized";
     return;
@@ -55,27 +55,30 @@ void Logger::Init(int argc, char** argv, const string& app_name,
   absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
 
   // Setup custom log directory
-  string log_dir = custom_log_dir.empty() ?
-    absl::GetFlag(FLAGS_log_dir) : custom_log_dir;
+  string log_dir = absl::GetFlag(FLAGS_log_dir);
 
-  // Create log directory if it doesn't exist
-  try {
-    if (!fs::exists(log_dir)) {
-      fs::create_directories(log_dir);
+  if (!log_dir.empty()) {
+    // Create log directory if it doesn't exist
+    try {
+      if (!fs::exists(log_dir)) {
+        fs::create_directories(log_dir);
+      }
+    } catch (const fs::filesystem_error& e) {
+      LOG(ERROR) << "Failed to create log directory: " << log_dir 
+                << ", error: " << e.what();
     }
-  } catch (const fs::filesystem_error& e) {
-    LOG(ERROR) << "Failed to create log directory: " << log_dir 
-               << ", error: " << e.what();
   }
 
   // Register custom log sink if enabled
   if (absl::GetFlag(FLAGS_enable_custom_log_sink)) {
-    custom_sink_ = make_unique<CustomLogSink>(log_dir, app_name);
+    vector<string> app_name = absl::StrSplit(argv[0], '/');
+    LOG(INFO) << "Log file prefix name is " << app_name.back();
+    custom_sink_ = make_unique<CustomLogSink>(log_dir, app_name.back());
     absl::AddLogSink(custom_sink_.get());
   }
 
   initialized_ = true;
-  LOG(INFO) << "Logger initialized successfully. Log directory: " << log_dir;
+  LOG(INFO) << "Logger initialized successfully";
 }
 
 //------------------------------------------------------------------------------
@@ -103,16 +106,28 @@ void Logger::EnableSignalHandlers() {
     return;
   }
 
+  // Set up alternate signal stack, static so it's not on the stack itself
+  static uint8_t alternate_stack[65536]; // 64KB alternate stack
+  stack_t ss;
+  ss.ss_sp = alternate_stack;
+  ss.ss_size = sizeof(alternate_stack);
+  ss.ss_flags = 0;
+  if (sigaltstack(&ss, nullptr) != 0) {
+    LOG(ERROR) << "Failed to set up alternate signal stack: "
+               << strerror(errno);
+    return;
+  }
+
   // Install custom signal handlers manually
   struct sigaction sa;
-  sa.sa_flags = SA_SIGINFO;
+  sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
   sigemptyset(&sa.sa_mask);
   sa.sa_sigaction = [](int sig, siginfo_t* info, void* ctx) {
     Logger::WriteCrashTrace(sig);
     ::signal(sig, SIG_DFL);
     ::raise(sig);
   };
-  
+
   // Track installed signals
   installed_signals_ = {
     SIGSEGV,
@@ -126,7 +141,7 @@ void Logger::EnableSignalHandlers() {
     SIGSYS,
     SIGPIPE
   };
-  
+
   for (int sig : installed_signals_) {
     sigaction(sig, &sa, nullptr);
   }
@@ -139,9 +154,7 @@ void Logger::EnableSignalHandlers() {
 //------------------------------------------------------------------------------
 
 void Logger::WriteCrashTrace(int signal) {
-  if (!custom_sink_ || !custom_sink_->log_file_.is_open()) {
-    return;
-  } 
+  CHECK(custom_sink_);
   custom_sink_->BackwardPrinter(signal);
 }
 
@@ -152,12 +165,12 @@ void Logger::DisableSignalHandlers() {
     LOG(WARNING) << "Signal handlers not enabled";
     return;
   }
-  
+
   // Restore default handlers for tracked signals
   for (int sig : installed_signals_) {
     ::signal(sig, SIG_DFL);
   }
-  
+
   installed_signals_.clear();
   signal_handler_initialized_ = false;
   LOG(INFO) << "Signal handlers disabled and restored to default";
@@ -166,7 +179,12 @@ void Logger::DisableSignalHandlers() {
 //------------------------------------------------------------------------------
 
 CustomLogSink::CustomLogSink(const string& log_dir, const string& app_name) :
-  log_dir_(log_dir), app_name_(app_name) {
+  log_dir_(log_dir), app_name_(app_name), skip_log_to_file_(log_dir.empty()) {
+
+  if (skip_log_to_file_) {
+    LOG(WARNING) << "Log directory is empty. Logs will not be written to file.";
+    return;
+  }
   OpenLogFile();
 }
 
@@ -182,6 +200,9 @@ CustomLogSink::~CustomLogSink() {
 //------------------------------------------------------------------------------
 
 void CustomLogSink::Send(const absl::LogEntry& entry) {
+  if (skip_log_to_file_) {
+    return;
+  }
   lock_guard<mutex> lock(file_mutex_);
   if (!log_file_.is_open()) {
     OpenLogFile();
@@ -209,8 +230,10 @@ void CustomLogSink::BackwardPrinter(int signal) {
   p.print(st, oss);
   oss << "\n=== END CRASH TRACE ===\n";
   std::cerr << oss.str();
-  log_file_ << oss.str();
-  log_file_.flush();
+  if (!skip_log_to_file_ && log_file_.is_open()) {
+    log_file_ << oss.str();
+    log_file_.flush();
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -218,11 +241,12 @@ void CustomLogSink::BackwardPrinter(int signal) {
 void CustomLogSink::OpenLogFile() {
   string filename = GetLogFileName();
   string filepath = log_dir_ + "/" + filename;
+  LOG(INFO) << "Opening log file " << filepath;
 
   log_file_.open(filepath, ios::out | ios::app);
 
   if (!log_file_.is_open()) {
-    cerr << "Failed to open log file: " << filepath << endl;
+    LOG(ERROR) << "Failed to open log file: " << filepath << endl;
   }
 }
 

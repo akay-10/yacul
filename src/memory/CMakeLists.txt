@@ -12,6 +12,7 @@ add_library(
   libmemory STATIC
   arena.cc
   allocator.h
+  buffer.cc
 )
 
 target_include_directories(

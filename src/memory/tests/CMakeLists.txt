@@ -30,3 +30,19 @@ target_link_libraries(
   GTest::gtest_main
 )
 
+add_executable(
+  buffer_test
+  buffer_test.cc
+)
+
+target_include_directories(
+  buffer_test PRIVATE
+  ${CMAKE_SOURCE_DIR}/src/memory
+)
+
+target_link_libraries(
+  buffer_test
+  libmemory
+  GTest::gtest_main
+)
+

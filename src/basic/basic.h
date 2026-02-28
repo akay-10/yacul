@@ -13,6 +13,10 @@
   TypeName(const TypeName &) = delete;                                         \
   const TypeName &operator=(const TypeName &) = delete;
 
+#define DISALLOW_MOVE_AND_ASSIGN(TypeName)                                     \
+  TypeName(TypeName &&) = delete;                                              \
+  TypeName &operator=(TypeName &&) = delete;
+
 #define DISALLOW_CONST_RVALUE_COPY_AND_ASSIGN(TypeName)                        \
   TypeName(const TypeName &&) = delete;                                        \
   void operator=(const TypeName &&) = delete;

@@ -1,14 +1,15 @@
 #ifndef UTILS_MEMORY_BUFFER_H
 #define UTILS_MEMORY_BUFFER_H
 
-#include <memory> // shared_ptr
 #include <atomic> // atomic
+#include <memory> // shared_ptr
 #include <vector> // vector
 
 #include "basic/basic.h"
 #include "logging/logger.h"
 
-namespace utils { namespace memory {
+namespace utils {
+namespace memory {
 
 // Forward declarations
 class Buffer;
@@ -20,7 +21,7 @@ class BufferRWCursor;
 //   [ PhysicalBuffer header | .... capacity bytes .... ]
 // ===========================================================================
 class PhysicalBuffer {
- public:
+public:
   // Combined allocation: header + capacity bytes in one malloc.
   static PhysicalBuffer *Create(std::size_t capacity) {
     const std::size_t alloc_size = sizeof(PhysicalBuffer) + capacity;
@@ -59,12 +60,13 @@ class PhysicalBuffer {
 
   // Pointer to the first usable byte of this physical allocation.
   uint8_t *buffer_start() const {
-    if (flags_ & kFlagExternal) return external_data_;
-    return reinterpret_cast<uint8_t *>(
-      const_cast<PhysicalBuffer *>(this)) + sizeof(PhysicalBuffer);
+    if (flags_ & kFlagExternal)
+      return external_data_;
+    return reinterpret_cast<uint8_t *>(const_cast<PhysicalBuffer *>(this)) +
+           sizeof(PhysicalBuffer);
   }
 
- private:
+private:
   DISALLOW_COPY_AND_ASSIGN(PhysicalBuffer);
   DISALLOW_MOVE_AND_ASSIGN(PhysicalBuffer);
 
@@ -113,7 +115,7 @@ class PhysicalBuffer {
 // Move semantics: transfers the node including its ring position.
 // ===========================================================================
 class Buffer {
- public:
+public:
   typedef std::shared_ptr<Buffer> Ptr;
   typedef std::shared_ptr<const Buffer> PtrConst;
 
@@ -298,7 +300,7 @@ class Buffer {
   bool operator!=(const Buffer &rhs) const { return !(*this == rhs); }
 
   std::string ToString() const {
-    return { reinterpret_cast<const char *>(data_), length_ };
+    return {reinterpret_cast<const char *>(data_), length_};
   }
 
 private:
@@ -344,7 +346,7 @@ private:
 class BufferCursor {
 public:
   explicit BufferCursor(const Buffer *head)
-    : head_(head), current_(head), offset_(0) {}
+      : head_(head), current_(head), offset_(0) {}
 
   // Bytes remaining in the entire chain from current position.
   std::size_t TotalLength() const;
@@ -377,7 +379,7 @@ private:
 class BufferRWCursor {
 public:
   explicit BufferRWCursor(Buffer *head)
-    : head_(head), current_(head), offset_(0) {}
+      : head_(head), current_(head), offset_(0) {}
 
   std::size_t TotalLength() const;
 
@@ -399,6 +401,7 @@ private:
   std::size_t offset_;
 };
 
-}} // namespace utils::memory
+} // namespace memory
+} // namespace utils
 
 #endif // UTILS_MEMORY_BUFFER_H

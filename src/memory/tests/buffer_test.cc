@@ -322,7 +322,7 @@ TEST(BufferMutationTest, TrimEndOutOfRange) {
 
 TEST(BufferMutationTest, PrependIntoHeadroom) {
   auto b = Buffer::CopyFrom("world");
-  b.TrimStart(2);                           // creates 2 bytes of headroom
+  b.TrimStart(2);                             // creates 2 bytes of headroom
   EXPECT_DEATH(b.Prepend(3), "out of range"); // only 2 bytes available
   b.Prepend(2);
   EXPECT_EQ(BufferStr(b), "world"); // 'wo' was already there in the headroom

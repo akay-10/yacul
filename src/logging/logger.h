@@ -8,17 +8,18 @@
 #include "backward.hpp"
 #include "basic/basic.h"
 
-namespace utils { namespace logging {
+namespace utils {
+namespace logging {
 
 // Forward declarations
 class CustomLogSink;
 
 class Logger {
- public:
+public:
   // Delete constructors for static class
   Logger() = delete;
 
-  static void Init(int argc, char** argv);
+  static void Init(int argc, char **argv);
 
   static void Shutdown();
 
@@ -28,10 +29,10 @@ class Logger {
 
   static bool IsInitialized() { return initialized_; }
 
- private:
+private:
   static void WriteCrashTrace(int signal);
 
- private:
+private:
   DISALLOW_COPY_AND_ASSIGN(Logger);
 
   static bool initialized_;
@@ -41,26 +42,26 @@ class Logger {
 };
 
 class CustomLogSink : public absl::LogSink {
- public:
+public:
   typedef std::unique_ptr<CustomLogSink> UPtr;
   typedef std::unique_ptr<const CustomLogSink> UPtrConst;
 
-  explicit CustomLogSink(const std::string& log_dir,
-                         const std::string& app_name);
+  explicit CustomLogSink(const std::string &log_dir,
+                         const std::string &app_name);
   ~CustomLogSink() override;
 
-  void Send(const absl::LogEntry& entry) override;
+  void Send(const absl::LogEntry &entry) override;
 
   friend class Logger;
 
- private:
+private:
   void OpenLogFile();
 
   std::string GetLogFileName() const;
 
   void BackwardPrinter(int signal);
 
- private:
+private:
   std::atomic<bool> skip_log_to_file_;
   std::string log_dir_;
   std::ofstream log_file_;
@@ -68,6 +69,7 @@ class CustomLogSink : public absl::LogSink {
   std::mutex file_mutex_;
 };
 
-}} // namespace utils::logging
+} // namespace logging
+} // namespace utils
 
 #endif // UTILS_LOGGING_LOGGER_H

@@ -1,7 +1,7 @@
 #ifndef UTILS_BASIC_BASIC_H
 #define UTILS_BASIC_BASIC_H
 
-#include <cstddef> // size_t 
+#include <cstddef> // size_t
 #include <cstdint> // int32_t, ...
 #include <ostream> // std::ostream
 
@@ -98,40 +98,36 @@ VarPrinter<Args...> make_printer(NamedVar<Args>... vars) {
 // Math functions
 //------------------------------------------------------------------------------
 
-template <typename T>
-inline constexpr bool IsPowerOfTwo(T x) noexcept {
+template <typename T> inline constexpr bool IsPowerOfTwo(T x) noexcept {
   static_assert(std::is_integral_v<T>, "Integral type required");
   return x > 0 && (x & (x - 1)) == 0;
 }
 
-template <typename T>
-inline constexpr T CeilDiv(T a, T b) noexcept {
+template <typename T> inline constexpr T CeilDiv(T a, T b) noexcept {
   if (__builtin_constant_p(IsPowerOfTwo(b)) && IsPowerOfTwo(b)) {
     return (a + b - 1) >> __builtin_ctzll(static_cast<uint64_t>(b));
   }
   return (a + b - 1) / b;
 }
 
-template <typename T>
-inline constexpr T AlignUp(T a, T b) noexcept {
+template <typename T> inline constexpr T AlignUp(T a, T b) noexcept {
   if (__builtin_constant_p(IsPowerOfTwo(b)) && IsPowerOfTwo(b)) {
     return (a + b - 1) & ~(b - 1);
   }
   return ((a + b - 1) / b) * b;
 }
 
-template <typename T>
-inline constexpr T AlignDown(T a, T b) noexcept {
+template <typename T> inline constexpr T AlignDown(T a, T b) noexcept {
   if (__builtin_constant_p(IsPowerOfTwo(b)) && IsPowerOfTwo(b)) {
     return a & ~(b - 1);
   }
   return (a / b) * b;
 }
 
-template <typename T>
-inline int Log2(T x) noexcept {
+template <typename T> inline int Log2(T x) noexcept {
   static_assert(std::is_integral_v<T>, "Integral type required");
-  if (x <= 0) return -1; 
+  if (x <= 0)
+    return -1;
   if constexpr (sizeof(T) <= 4) {
     return 31 - __builtin_clz(static_cast<uint32_t>(x));
   } else {
@@ -139,10 +135,11 @@ inline int Log2(T x) noexcept {
   }
 }
 
-template <typename T>
-inline T NextPowerOfTwo(T x) noexcept {
-  if (x <= 1) return 1;
-  if (IsPowerOfTwo(x)) return x;
+template <typename T> inline T NextPowerOfTwo(T x) noexcept {
+  if (x <= 1)
+    return 1;
+  if (IsPowerOfTwo(x))
+    return x;
 
   if constexpr (sizeof(T) <= 4) {
     return T(1) << (32 - __builtin_clz(static_cast<uint32_t>(x - 1)));
@@ -151,9 +148,9 @@ inline T NextPowerOfTwo(T x) noexcept {
   }
 }
 
-template <typename T>
-inline T PrevPowerOfTwo(T x) noexcept {
-  if (x <= 0) return 0;
+template <typename T> inline T PrevPowerOfTwo(T x) noexcept {
+  if (x <= 0)
+    return 0;
   if constexpr (sizeof(T) <= 4) {
     return T(1) << (31 - __builtin_clz(static_cast<uint32_t>(x)));
   } else {
@@ -169,4 +166,3 @@ inline T PrevPowerOfTwo(T x) noexcept {
 inline constexpr std::size_t CACHE_LINE_SIZE = 64;
 
 #endif // UTILS_BASIC_BASIC_H
-

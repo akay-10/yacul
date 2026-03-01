@@ -14,7 +14,7 @@ void CallStack2_Segv() {
   LOG(INFO) << "Inside CallStack2_Segv - will cause SEGV";
   this_thread::sleep_for(chrono::milliseconds(100));
   int *p = nullptr;
-  *p = 31;  // Intentional SEGV
+  *p = 31; // Intentional SEGV
 }
 
 void CallStack2_Check() {
@@ -60,17 +60,17 @@ void TestWithProcesses() {
   waitpid(pid2, &status2, 0);
 
   if (WIFSIGNALED(status1)) {
-    LOG(INFO) << "Child 1 (pid " << pid1 << ") terminated by signal: " 
-              << WTERMSIG(status1);
+    LOG(INFO) << "Child 1 (pid " << pid1
+              << ") terminated by signal: " << WTERMSIG(status1);
   }
 
   if (WIFSIGNALED(status2)) {
-    LOG(INFO) << "Child 2 (pid " << pid2 << ") terminated by signal: " 
-              << WTERMSIG(status2);
+    LOG(INFO) << "Child 2 (pid " << pid2
+              << ") terminated by signal: " << WTERMSIG(status2);
   }
 }
 
-int main (int argc, char** argv) {
+int main(int argc, char **argv) {
   Logger::Init(argc, argv);
   Logger::EnableSignalHandlers();
 

@@ -2,10 +2,12 @@
 
 using namespace std;
 
-namespace utils { namespace hashing {
+namespace utils {
+namespace hashing {
 
-BloomFilter::BloomFilter() { }
+BloomFilter::BloomFilter() {}
 
-BloomFilter::~BloomFilter() { }
+BloomFilter::~BloomFilter() {}
 
-}} // namespace utils::hashing
+} // namespace hashing
+} // namespace utils

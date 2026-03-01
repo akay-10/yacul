@@ -2,17 +2,18 @@
 
 using namespace std;
 
-namespace utils { namespace snippet {
+namespace utils {
+namespace snippet {
 
 //------------------------------------------------------------------------------
 
-Snippet::Snippet() { }
+Snippet::Snippet() {}
 
 //------------------------------------------------------------------------------
 
-Snippet::~Snippet() { }
+Snippet::~Snippet() {}
 
 //------------------------------------------------------------------------------
 
-}} // namespace utils::hashing
-
+} // namespace snippet
+} // namespace utils

@@ -1,26 +1,23 @@
-#include "gtest/gtest.h"
 #include "hash.h"
+#include "gtest/gtest.h"
 
 using namespace utils::hashing;
 using namespace std;
 
 // Create a wrapper to turn the enum Value into a type
-template <HashType H>
-struct HashTypeTag {
+template <HashType H> struct HashTypeTag {
   static constexpr HashType value = H;
 };
 
 // Define the list of types to test
-using HashTypesToTest = ::testing::Types<
-  HashTypeTag<HashType::kStdHash>,
-  HashTypeTag<HashType::kMurmurHashx86_32>,
-  HashTypeTag<HashType::kAbseilHash>
->;
+using HashTypesToTest =
+    ::testing::Types<HashTypeTag<HashType::kStdHash>,
+                     HashTypeTag<HashType::kMurmurHashx86_32>,
+                     HashTypeTag<HashType::kAbseilHash>>;
 
 // Define the Test Fixture
-template <typename T>
-class HashTest : public ::testing::Test {
- protected:
+template <typename T> class HashTest : public ::testing::Test {
+protected:
   // Helper to extract the enum value from the tag type
   static constexpr HashType GetHashType() { return T::value; }
 };
@@ -80,17 +77,19 @@ TYPED_TEST(HashTest, SanityTest) {
     }
     {
       Hash<tuple<const int, int, string, const string>, hash_type> hasher;
-      tuple<const int, int, string, const string> t = {31, 45, "Hello", "World"};
-      const tuple<const int, int, string, const string> u =
-        {31, 45, "Hello", "World"};
+      tuple<const int, int, string, const string> t = {31, 45, "Hello",
+                                                       "World"};
+      const tuple<const int, int, string, const string> u = {31, 45, "Hello",
+                                                             "World"};
       hasher(t);
       hasher(u);
     }
     {
       Hash<const tuple<const int, int, string, const string>, hash_type> hasher;
-      tuple<const int, int, string, const string> t = {31, 45, "Hello", "World"};
-      const tuple<const int, int, string, const string> u =
-        {31, 45, "Hello", "World"};
+      tuple<const int, int, string, const string> t = {31, 45, "Hello",
+                                                       "World"};
+      const tuple<const int, int, string, const string> u = {31, 45, "Hello",
+                                                             "World"};
       hasher(t);
       hasher(u);
     }
@@ -196,7 +195,7 @@ TYPED_TEST(HashTest, DistributionQualityTest) {
   // Check distribution - each bucket should have roughly
   // num_values/num_buckets hashes
   int expected = num_values / num_buckets;
-  int min_acceptable = expected / 2;  // Allow 50% deviation
+  int min_acceptable = expected / 2; // Allow 50% deviation
   int max_acceptable = expected * 2;
 
   for (int count : buckets) {

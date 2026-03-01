@@ -2,7 +2,8 @@
 
 using namespace std;
 
-namespace utils { namespace memory {
+namespace utils {
+namespace memory {
 
 //------------------------------------------------------------------------------
 
@@ -11,7 +12,7 @@ Buffer Buffer::Create(size_t capacity) {
   b.physical_ = PhysicalBuffer::Create(capacity);
   b.data_ = b.physical_->buffer_start();
   b.length_ = 0;
-  return b; 
+  return b;
 }
 
 //------------------------------------------------------------------------------
@@ -27,9 +28,7 @@ Buffer Buffer::CopyFrom(const void *src, size_t len) {
 
 //------------------------------------------------------------------------------
 
-Buffer Buffer::CopyFrom(string str) {
-  return CopyFrom(str.data(), str.size());
-}
+Buffer Buffer::CopyFrom(string str) { return CopyFrom(str.data(), str.size()); }
 
 //------------------------------------------------------------------------------
 
@@ -55,7 +54,7 @@ Buffer::~Buffer() {
 //------------------------------------------------------------------------------
 
 Buffer::Buffer(const Buffer &rhs)
-  : physical_(rhs.physical_), data_(rhs.data_), length_(rhs.length_) {
+    : physical_(rhs.physical_), data_(rhs.data_), length_(rhs.length_) {
   if (physical_)
     physical_->Retain();
   MakeSelfRing();
@@ -80,7 +79,7 @@ Buffer &Buffer::operator=(const Buffer &rhs) {
 //------------------------------------------------------------------------------
 
 Buffer::Buffer(Buffer &&rhs)
-  : physical_(rhs.physical_), data_(rhs.data_), length_(rhs.length_) {
+    : physical_(rhs.physical_), data_(rhs.data_), length_(rhs.length_) {
   StealRingPosition(rhs);
   rhs.physical_ = nullptr;
   rhs.data_ = nullptr;
@@ -243,7 +242,8 @@ void Buffer::EnsureTailroom(size_t n) {
   const size_t new_cap = max(length_ + n, (length_ + n) * 3 / 2 + 64);
   auto *new_phys = PhysicalBuffer::Create(new_cap);
   uint8_t *new_start = new_phys->buffer_start() + current_head;
-  if (length_) memcpy(new_start, data_, length_);
+  if (length_)
+    memcpy(new_start, data_, length_);
   ReleasePhysical();
   physical_ = new_phys;
   data_ = new_start;
@@ -317,7 +317,8 @@ void Buffer::CowDetach() {
   const size_t head = headroom();
   auto *new_phys = PhysicalBuffer::Create(physical_->capacity());
   uint8_t *new_start = new_phys->buffer_start() + head;
-  if (length_) memcpy(new_start, data_, length_);
+  if (length_)
+    memcpy(new_start, data_, length_);
   ReleasePhysical();
   physical_ = new_phys;
   data_ = new_start;
@@ -487,4 +488,5 @@ void BufferRWCursor::AdvanceIfExhausted() {
 
 //------------------------------------------------------------------------------
 
-}} // namespace utils::memory
+} // namespace memory
+} // namespace utils

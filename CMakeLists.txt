@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(Utils VERSION 1.0.0 LANGUAGES CXX)
+project(
+  Utils
+  VERSION 1.0.0
+  LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,12 +16,11 @@ include(FetchContent)
 FetchContent_Declare(
   googletest
   GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG v1.17.0
-)
+  GIT_TAG v1.17.0)
 
 if(BUILD_TEST)
-  # Set GoogleTest options
-  # Controls whether GoogleMock (gmock) is built alongside GoogleTest (gtest)
+  # Set GoogleTest options Controls whether GoogleMock (gmock) is built
+  # alongside GoogleTest (gtest)
   set(BUILD_GMOCK ON)
   # Controls whether GoogleTest installs its headers and libraries to the system
   set(INSTALL_GTEST OFF)
@@ -31,11 +33,9 @@ endif()
 FetchContent_Declare(
   absl
   GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
-  GIT_TAG 20260107.0
-)
+  GIT_TAG 20260107.0)
 
-# Set abseil-cpp options
-# Make abseil use the same C++ standard as this project
+# Set abseil-cpp options Make abseil use the same C++ standard as this project
 set(ABSL_PROPAGATE_CXX_STD ON)
 # Compiler warnings from Abseil headers are suppressed
 set(ABSL_USE_SYSTEM_INCLUDES OFF)
@@ -55,4 +55,3 @@ endif()
 FetchContent_MakeAvailable(absl)
 
 add_subdirectory(src)
-

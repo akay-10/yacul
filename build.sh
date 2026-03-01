@@ -85,7 +85,7 @@ usage() {
   echo -e "    ${CYAN}--make${RESET}          Force use of Make instead of Ninja"
   echo -e "    ${CYAN}--tests-on${RESET}      Force enable tests"
   echo -e "    ${CYAN}--tests-off${RESET}     Force disable tests"
-  echo -e "    ${CYAN}--logs${RESET}          Delete all logs. Can be used only with clean COMMAND" 
+  echo -e "    ${CYAN}--logs${RESET}          Delete all logs. Can be used only with clean COMMAND"
   echo -e "    ${CYAN}-h, --help${RESET}      Show this help message"
   echo ""
   echo -e "${BOLD}EXAMPLES:${RESET}"

@@ -19,7 +19,7 @@ public:
   // Delete constructors for static class
   Logger() = delete;
 
-  static void Init(int argc, char **argv);
+  static void Init(int argc = 0, char **argv = nullptr);
 
   static void Shutdown();
 

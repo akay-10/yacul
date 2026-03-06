@@ -41,6 +41,13 @@ void Logger::Init(int argc, char **argv) {
     return;
   }
 
+  if (argc == 0 || argv == nullptr) {
+    std::cerr << "No command line arguments provided; using defaults\n";
+    argc = 1;
+    static char *default_argv[] = {const_cast<char *>("app")};
+    argv = default_argv;
+  }
+
   // Parse abseil flags
   absl::ParseCommandLine(argc, argv);
 

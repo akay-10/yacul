@@ -1,4 +1,4 @@
-# Yet Another CPP Utility Library (YACUL)
+# Yet Another CPP Utility Library (YACUL) (WIP)
 
 ## Hashing
 
@@ -8,26 +8,20 @@
 ## Building and Running Tests
 
 ```bash
-# Build in debug mode and run all tests
-./build.sh build -d --run-tests
+# Build in debug mode
+./build.sh build
 
-# Build with sanitizers and run tests
-./build.sh test --sanitize address -v
+# Run tests
+./build.sh test
 
 # Run all tests with verbose output
 ./run_tests.sh -v
 
-# Run tests matching "unit" pattern
-./run_tests.sh --filter "unit"
-
 # Run specific test
-./run_tests.sh myproject test_basics
+./run_tests.sh concurreny threadpool_test -- --gtest_filter="*BasicTasks*"
 
 # List all available tests
 ./run_tests.sh -l
-
-# Run tests with 30s timeout, continue on failure
-./run_tests.sh -c -t 30
 
 # Show build configuration
 ./build.sh info

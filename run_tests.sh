@@ -7,6 +7,7 @@ TEST_DIR_NAME="tests"
 VERBOSE=false
 CONTINUE_ON_FAILURE=false
 FILTER=""
+TEST_ARGS=()
 
 # Color output. Init colors only when this process's fd 1 (stdout) is connected
 # to a terminal.
@@ -64,12 +65,13 @@ log_test_header() {
 # Print usage
 print_usage() {
   cat <<EOF
-Usage: $0 [OPTIONS] [SUBDIR] [TEST_NAME]
+Usage: $0 [OPTIONS] [SUBDIR] [TEST_NAME] -- [TEST_ARGS...]
 
 Description:
   Run test executables from the build directory.
   If no arguments are provided, runs all tests.
   If SUBDIR and TEST_NAME are provided, runs that specific test.
+  Any additional arguments after TEST_NAME are passed to the test executable.
 
 Options:
   -v, --verbose            Show detailed test output
@@ -79,16 +81,18 @@ Options:
   -h, --help               Show this help message
 
 Arguments:
-  SUBDIR                   Test subdirectory name (e.g., 'basic or hashing')
+  SUBDIR                   Test subdirectory name (e.g., 'basic' or 'hashing')
   TEST_NAME                Specific test executable name
+  TEST_ARGS                Additional arguments passed to the test executable
 
 Examples:
-  $0                       # Run all tests
-  $0 -v                    # Run all tests with verbose output
-  $0 --filter "unit"       # Run only tests matching "unit"
-  $0 basic basic_test      # Run specific test
-  $0 -l                    # List all available tests
-  $0 -c                    # Run all tests and continue on failure
+  $0                                 # Run all tests
+  $0 -v                              # Run all tests with verbose output
+  $0 --filter "unit"                 # Run only tests matching "unit"
+  $0 basic basic_test                # Run specific test
+  $0 basic basic_test -- --args=val  # Run test with args (-- separator)
+  $0 -l                              # List all available tests
+  $0 -c                              # Run all tests and continue on failure
 
 Environment Variables:
   TEST_BUILD_DIR           Override build directory (default: build)
@@ -107,6 +111,11 @@ main() {
 
   while [[ $# -gt 0 ]]; do
     case $1 in
+    --)
+      shift
+      TEST_ARGS=("$@")
+      break
+      ;;
     -v | --verbose)
       VERBOSE=true
       shift
@@ -342,7 +351,7 @@ run_all_tests() {
 
   for test_exec in "${tests[@]}"; do
     local result
-    run_single_test "$test_exec"
+    run_single_test "$test_exec" "${TEST_ARGS[@]}"
     result=$?
 
     case "$result" in
@@ -392,7 +401,7 @@ run_specific_test() {
   local test_exec="$test_subdir/$2"
 
   if [ -f "$test_exec" ] && [ -x "$test_exec" ]; then
-    run_single_test "$test_exec"
+    run_single_test "$test_exec" "${TEST_ARGS[@]}"
     return $?
   else
     log_error "Test executable '$test_exec' not found or not executable"
@@ -419,6 +428,8 @@ run_specific_test() {
 # Run a single test
 run_single_test() {
   local test_exec="$1"
+  shift
+  local test_args=("$@")
   local test_name=""
   local subdir=""
 
@@ -442,10 +453,10 @@ run_single_test() {
   start_time=$(date +%s)
 
   if [ "$VERBOSE" = true ]; then
-    "$test_exec"
+    "$test_exec" "${test_args[@]}"
     test_result=$?
   else
-    "$test_exec" >/dev/null 2>&1
+    "$test_exec" "${test_args[@]}" >/dev/null 2>&1
     test_result=$?
   fi
 

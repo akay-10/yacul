@@ -166,7 +166,7 @@ TEST_F(ThreadPoolTest, SubmitAt_PastTime) {
   auto future = pool.SubmitAt(past, []() { return 100; });
 
   EXPECT_EQ(future.first.get(), 100);
-auto elapsed = duration_cast<std::chrono::milliseconds>(
+  auto elapsed = duration_cast<std::chrono::milliseconds>(
                      std::chrono::steady_clock::now() - past)
                      .count();
   LOG(INFO) << LOGVARS(elapsed);

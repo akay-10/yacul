@@ -1,0 +1,10 @@
+add_library(libsystem STATIC popen_wrapper.cc)
+
+target_include_directories(libsystem PUBLIC ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(libsystem libbasics)
+
+if(BUILD_TEST)
+  add_subdirectory(tests)
+endif()
+

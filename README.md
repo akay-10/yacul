@@ -1,9 +1,53 @@
-# Yet Another CPP Utility Library (YACUL) (WIP)
+# Yet Another CPP Utility Library (YACUL)
 
-## Hashing
+A C++20 utility library providing various components for system programming, concurrency, memory management, and more.
 
-- Murmur hashing 3 (credit: [git:aappleby/smhasher](https://github.com/aappleby/smhasher))
+## Modules
+
+### Basic
+- Core utilities and macros (DISALLOW_COPY_AND_ASSIGN, etc.)
+
+### Concurrency
+- ThreadPool - Thread pool with priority support
+- LockRange - Range-based locking primitives
+- LockId - Lock ID utilities
+- OsLocklessQueue - Lock-free queue (moodycamel)
+
+### Hashing
+- MurmurHash3 (credit: [git:aappleby/smhasher](https://github.com/aappleby/smhasher))
+- SHA hashing
 - Bloom Filters
+
+### Logging
+- Logger - Structured logging with severity levels
+- BinaryLogger - Binary log output support
+
+### Memory
+- Buffer - Memory buffer utilities
+- Arena - Memory arena allocation
+- Allocator - Custom allocator support
+
+### System
+- SystemInfo - System information gathering (CPU, memory, disk, network, etc.)
+- PopenWrapper - Process execution wrapper
+- IoUring - Linux io_uring support (WIP)
+- EpollDriver - Linux epoll support (WIP)
+
+### Compression (WIP - Not yet integrated)
+- CRC32
+- Adler32
+
+### Event (WIP - Not yet integrated)
+- EventDriver
+
+### Misc (WIP - Not yet integrated)
+- Cache
+- QoS
+- ScopedExec
+- Ranges
+
+### WAL (WIP - Not yet integrated)
+- Write-Ahead Log
 
 ## Building and Running Tests
 
@@ -18,7 +62,7 @@
 ./run_tests.sh -v
 
 # Run specific test
-./run_tests.sh concurreny threadpool_test -- --gtest_filter="*BasicTasks*"
+./run_tests.sh concurrency threadpool_test -- --gtest_filter="*BasicTasks*"
 
 # List all available tests
 ./run_tests.sh -l
@@ -32,7 +76,7 @@
 - Abseil
 - Google Test
 
-### Note
+## Note
 
-- Files starting with a 'os\_' prefix denotes that file/code is an open source
+- Files starting with an 'os\_' prefix denotes that file/code is an open source
   property.

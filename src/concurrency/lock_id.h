@@ -14,6 +14,8 @@
 #include <unordered_map>
 #include <utility>
 
+#include "basic/basic.h"
+
 namespace utils {
 namespace concurrency {
 
@@ -67,10 +69,8 @@ struct LockEntry {
   LockEntry() = default;
 
   // Non-copyable, non-movable: the mutex must stay at a stable address.
-  LockEntry(const LockEntry &) = delete;
-  LockEntry &operator=(const LockEntry &) = delete;
-  LockEntry(LockEntry &&) = delete;
-  LockEntry &operator=(LockEntry &&) = delete;
+  DISALLOW_COPY_AND_ASSIGN(LockEntry);
+  DISALLOW_MOVE_AND_ASSIGN(LockEntry);
 };
 
 } // namespace lock_id_internal
@@ -110,8 +110,7 @@ public:
     return *this;
   }
 
-  LockIdGuard(const LockIdGuard &) = delete;
-  LockIdGuard &operator=(const LockIdGuard &) = delete;
+  DISALLOW_COPY_AND_ASSIGN(LockIdGuard);
 
   // Returns true if this guard owns a lock.
   explicit operator bool() const { return lock_.owns_lock(); }
@@ -158,8 +157,7 @@ public:
     return *this;
   }
 
-  LockIdSharedGuard(const LockIdSharedGuard &) = delete;
-  LockIdSharedGuard &operator=(const LockIdSharedGuard &) = delete;
+  DISALLOW_COPY_AND_ASSIGN(LockIdSharedGuard);
 
   explicit operator bool() const { return lock_.owns_lock(); }
 
@@ -197,10 +195,8 @@ public:
   ~LockId() = default;
 
   // Non-copyable, non-movable (entries hold raw back-pointers).
-  LockId(const LockId &) = delete;
-  LockId &operator=(const LockId &) = delete;
-  LockId(LockId &&) = delete;
-  LockId &operator=(LockId &&) = delete;
+  DISALLOW_COPY_AND_ASSIGN(LockId);
+  DISALLOW_MOVE_AND_ASSIGN(LockId);
 
   // -------------------------------------------------------------------------
   // Exclusive (write) locking

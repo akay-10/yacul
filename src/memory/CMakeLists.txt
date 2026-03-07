@@ -7,7 +7,7 @@ set(BUILD_TESTING OFF)
 
 FetchContent_MakeAvailable(gperftools)
 
-add_library(libmemory STATIC arena.cc allocator.h buffer.cc)
+add_library(libmemory STATIC arena.cc buffer.cc)
 
 target_include_directories(libmemory PUBLIC ${CMAKE_SOURCE_DIR}/src
                                             ${gperftools_SOURCE_DIR}/src)

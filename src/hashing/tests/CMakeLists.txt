@@ -1,9 +1,9 @@
-add_executable(os_usage_test os_usage_test.cc)
+add_executable(os_murmur_hash3_test os_murmur_hash3_test.cc)
 
-target_include_directories(os_usage_test
+target_include_directories(os_murmur_hash3_test
                            PRIVATE ${CMAKE_SOURCE_DIR}/src/hashing)
 
-target_link_libraries(os_usage_test libhashing GTest::gtest_main)
+target_link_libraries(os_murmur_hash3_test libhashing GTest::gtest_main)
 
 add_executable(hash_test hash_test.cc)
 

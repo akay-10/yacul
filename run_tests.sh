@@ -456,8 +456,10 @@ run_single_test() {
     "$test_exec" "${test_args[@]}"
     test_result=$?
   else
+    set +e
     "$test_exec" "${test_args[@]}" >/dev/null 2>&1
     test_result=$?
+    set -e
   fi
 
   end_time=$(date +%s)

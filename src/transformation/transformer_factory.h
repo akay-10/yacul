@@ -3,7 +3,7 @@
 
 // ---------------------------------------------------------------------------
 // Factory for creating IDataTransformer instances by name or enum.
-// Respects compile-time feature flags (DATATRANSFORM_HAS_*).
+// Respects compile-time feature flags (UTILS_TRANSFORMATION_HAS_*).
 // ---------------------------------------------------------------------------
 
 #include <memory>

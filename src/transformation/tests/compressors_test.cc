@@ -169,7 +169,7 @@ INSTANTIATE_TEST_SUITE_P(
 // ---------------------------------------------------------------------------
 // Zstd-specific tests (compression level range)
 // ---------------------------------------------------------------------------
-#if defined(DATATRANSFORM_HAS_ZSTD)
+#if defined(UTILS_TRANSFORMATION_HAS_ZSTD)
 TEST(ZstdSpecific, CompressionLevels_1_Through_9) {
   for (int level = 1; level <= 9; ++level) {
     auto c = TransformerFactory::CreateCompressor(CompressorType::kZstd, level);

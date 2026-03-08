@@ -39,10 +39,9 @@ A C++20 utility library providing various components for system programming, con
 - IoUring - Linux io_uring support (WIP)
 - EpollDriver - Linux epoll support (WIP)
 
-### Compression (WIP - Not yet integrated)
+### Transformation
 
-- CRC32
-- Adler32
+- [yacul::transformation/README.md](/src/transformation/README.md)
 
 ### Event (WIP - Not yet integrated)
 
@@ -89,5 +88,4 @@ A C++20 utility library providing various components for system programming, con
 
 ## Note
 
-- Files starting with an 'os\_' prefix denotes that file/code is an open source
-  property.
+- Files starting with an 'os\_' prefix denotes that file/code is a drop in header file or an open source property.

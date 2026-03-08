@@ -221,7 +221,7 @@ INSTANTIATE_TEST_SUITE_P(AllHashers, HasherFixture,
 // ---------------------------------------------------------------------------
 // SHA-256 known-value test (NIST FIPS 180-4 test vector)
 // ---------------------------------------------------------------------------
-#if defined(DATATRANSFORM_HAS_OPENSSL)
+#if defined(UTILS_TRANSFORMATION_HAS_OPENSSL)
 TEST(Sha256KnownValue, NistTestVector_EmptyString) {
   auto hasher = TransformerFactory::CreateHasher(HashType::kSHA256);
   ASSERT_NE(hasher, nullptr);
@@ -241,8 +241,8 @@ TEST(Sha256KnownValue, NistTestVector_ABC) {
   // SHA-256("abc") = ba7816bf...
   const std::string kInput = "abc";
   ByteSpan src(reinterpret_cast<const uint8_t *>(kInput.data()), kInput.size());
-  const std::string kExpected = "ba7816bf8f01cfea414140de5dae2ec7"
-                                "3b00361bbef0469db1fecb2a3fa32a52";
+  const std::string kExpected =
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
   EXPECT_EQ(hasher->HashHex(src), kExpected);
 }
@@ -251,14 +251,14 @@ TEST(Sha256KnownValue, NistTestVector_ABC) {
 // ---------------------------------------------------------------------------
 // BLAKE3 known-value test
 // ---------------------------------------------------------------------------
-#if defined(DATATRANSFORM_HAS_BLAKE3)
+#if defined(UTILS_TRANSFORMATION_HAS_BLAKE3)
 TEST(Blake3KnownValue, EmptyInput) {
   auto hasher = TransformerFactory::CreateHasher(HashType::kBLAKE3);
   ASSERT_NE(hasher, nullptr);
 
   // Official BLAKE3 test vector: BLAKE3("") first 32 bytes.
-  const std::string kExpected = "af1349b9f5f9a1a6a0404dea36dcc949"
-                                "9bcbe3f1a44e9f9635a85c4cc1f86e00";
+  const std::string kExpected =
+      "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262";
 
   EXPECT_EQ(hasher->HashHex(ByteSpan{}), kExpected);
 }

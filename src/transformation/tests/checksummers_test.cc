@@ -161,7 +161,7 @@ INSTANTIATE_TEST_SUITE_P(
 // Known-value tests (CRC32C)
 // These pin against externally-verified reference values.
 // ---------------------------------------------------------------------------
-#if defined(DATATRANSFORM_HAS_CRC32C)
+#if defined(UTILS_TRANSFORMATION_HAS_CRC32C)
 class Crc32cKnownValuesTest : public ::testing::Test {
 protected:
   void SetUp() override {

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 project(
   yacul
   VERSION 0.0.1
-  LANGUAGES CXX)
+  LANGUAGES C CXX)
 
 # Options for FetchContent dependencies - can be overridden by parent projects
 option(UTILS_FETCH_GOOGLETEST "Fetch GoogleTest if not already available" ON)
@@ -18,6 +18,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(UTILS_BUILD_TEST "Build the test suite" ON)
+option(UTILS_BUILD_SHARED "Build shared libraries instead of static ones" OFF)
 
 include(FetchContent)
 

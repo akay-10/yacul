@@ -1,12 +1,12 @@
 #include "os_lockless_queue.h"
 
-#include <gtest/gtest.h>
-
 #include <atomic>
+#include <gtest/gtest.h>
 #include <thread>
 #include <vector>
 
 using moodycamel::ConcurrentQueue;
+using namespace std;
 
 class OsLocklessQueueTest : public ::testing::Test {
 protected:
@@ -44,12 +44,12 @@ TEST_F(OsLocklessQueueTest, EnqueueDequeueMultiple) {
 }
 
 TEST_F(OsLocklessQueueTest, EnqueueMove) {
-  ConcurrentQueue<std::string> queue(10);
+  ConcurrentQueue<string> queue(10);
 
-  std::string s = "hello";
-  EXPECT_TRUE(queue.enqueue(std::move(s)));
+  string s = "hello";
+  EXPECT_TRUE(queue.enqueue(move(s)));
 
-  std::string result;
+  string result;
   EXPECT_TRUE(queue.try_dequeue(result));
   EXPECT_EQ(result, "hello");
 }
@@ -90,10 +90,10 @@ TEST_F(OsLocklessQueueTest, SizeApprox) {
 TEST_F(OsLocklessQueueTest, BulkEnqueueDequeue) {
   ConcurrentQueue<int> queue(100);
 
-  std::vector<int> items = {1, 2, 3, 4, 5};
+  vector<int> items = {1, 2, 3, 4, 5};
   EXPECT_TRUE(queue.enqueue_bulk(items.begin(), items.size()));
 
-  std::vector<int> output(10);
+  vector<int> output(10);
   size_t count = queue.try_dequeue_bulk(output.begin(), 5);
 
   EXPECT_EQ(count, 5);
@@ -162,7 +162,7 @@ TEST_F(OsLocklessQueueTest, MoveConstruction) {
   queue1.enqueue(1);
   queue1.enqueue(2);
 
-  ConcurrentQueue<int> queue2 = std::move(queue1);
+  ConcurrentQueue<int> queue2 = move(queue1);
 
   int value;
   EXPECT_TRUE(queue2.try_dequeue(value));
@@ -192,7 +192,7 @@ TEST_F(OsLocklessQueueTest, MultiProducer) {
   const int num_producers = 4;
   const int items_per_producer = 100;
 
-  std::vector<std::thread> producers;
+  vector<thread> producers;
   for (int t = 0; t < num_producers; ++t) {
     producers.emplace_back([&queue, t, items_per_producer]() {
       for (int i = 0; i < items_per_producer; ++i) {
@@ -208,8 +208,8 @@ TEST_F(OsLocklessQueueTest, MultiProducer) {
   EXPECT_EQ(queue.size_approx(),
             static_cast<size_t>(num_producers * items_per_producer));
 
-  std::atomic<int> count{0};
-  std::vector<std::thread> consumers;
+  atomic<int> count{0};
+  vector<thread> consumers;
   for (int t = 0; t < num_producers; ++t) {
     consumers.emplace_back([&queue, &count]() {
       int value;
@@ -233,10 +233,10 @@ TEST_F(OsLocklessQueueTest, MultiConsumer) {
     queue.enqueue(i);
   }
 
-  std::atomic<int> total{0};
+  atomic<int> total{0};
   const int num_consumers = 4;
 
-  std::vector<std::thread> consumers;
+  vector<thread> consumers;
   for (int t = 0; t < num_consumers; ++t) {
     consumers.emplace_back([&queue, &total]() {
       int value;
@@ -254,13 +254,13 @@ TEST_F(OsLocklessQueueTest, MultiConsumer) {
 }
 
 TEST_F(OsLocklessQueueTest, StringQueue) {
-  ConcurrentQueue<std::string> queue(10);
+  ConcurrentQueue<string> queue(10);
 
   queue.enqueue("hello");
   queue.enqueue("world");
   queue.enqueue("test");
 
-  std::string value;
+  string value;
   EXPECT_TRUE(queue.try_dequeue(value));
   EXPECT_EQ(value, "hello");
   EXPECT_TRUE(queue.try_dequeue(value));

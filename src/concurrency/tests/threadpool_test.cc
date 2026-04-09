@@ -1,10 +1,10 @@
-#include <gtest/gtest.h>
-
 #include "logging/logger.h"
 #include "threadpool.h"
+
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <gtest/gtest.h>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -50,7 +50,6 @@ TEST_F(ThreadPoolTest, Submit_ReturnsValue) {
   ThreadPool pool(2);
 
   auto future = pool.Submit([]() {
-    // Test logs are written to stdout.
     LOG(INFO) << "Executing task that returns a value.";
     return 42;
   });
@@ -124,13 +123,13 @@ TEST_F(ThreadPoolTest, SubmitDelayed_ExecutesAfterDelay) {
 
   auto start = std::chrono::steady_clock::now();
   auto future =
-      pool.SubmitDelayed(std::chrono::milliseconds(100), []() { return 42; });
+    pool.SubmitDelayed(std::chrono::milliseconds(100), []() { return 42; });
 
   EXPECT_EQ(future.first.get(), 42);
 
   auto elapsed = duration_cast<std::chrono::milliseconds>(
-                     std::chrono::steady_clock::now() - start)
-                     .count();
+                   std::chrono::steady_clock::now() - start)
+                   .count();
   LOG(INFO) << LOGVARS(elapsed);
   EXPECT_GE(elapsed, 100);
 }
@@ -167,8 +166,8 @@ TEST_F(ThreadPoolTest, SubmitAt_PastTime) {
 
   EXPECT_EQ(future.first.get(), 100);
   auto elapsed = duration_cast<std::chrono::milliseconds>(
-                     std::chrono::steady_clock::now() - past)
-                     .count();
+                   std::chrono::steady_clock::now() - past)
+                   .count();
   LOG(INFO) << LOGVARS(elapsed);
   EXPECT_GE(elapsed, 0);
 }
@@ -176,14 +175,14 @@ TEST_F(ThreadPoolTest, SubmitAt_PastTime) {
 TEST_F(ThreadPoolTest, SubmitAt_FutureTime) {
   ThreadPool pool(2);
   auto future_time =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+    std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
 
   auto future = pool.SubmitAt(future_time, []() { return 200; });
 
   EXPECT_EQ(future.first.get(), 200);
   auto elapsed = duration_cast<std::chrono::milliseconds>(
-                     std::chrono::steady_clock::now() - future_time)
-                     .count();
+                   std::chrono::steady_clock::now() - future_time)
+                   .count();
   LOG(INFO) << LOGVARS(elapsed);
   EXPECT_GE(elapsed, 0);
 }
@@ -215,10 +214,10 @@ TEST_F(ThreadPoolTest, SubmitRecurring_Interval) {
   mutex mtx;
 
   auto handle =
-      pool.SubmitRecurring(std::chrono::milliseconds(50), [&times, &mtx]() {
-        lock_guard<mutex> lock(mtx);
-        times.push_back(std::chrono::steady_clock::now());
-      });
+    pool.SubmitRecurring(std::chrono::milliseconds(50), [&times, &mtx]() {
+      lock_guard<mutex> lock(mtx);
+      times.push_back(std::chrono::steady_clock::now());
+    });
 
   this_thread::sleep_for(std::chrono::milliseconds(160));
   handle.Cancel();
@@ -227,7 +226,7 @@ TEST_F(ThreadPoolTest, SubmitRecurring_Interval) {
 
   ASSERT_GE(times.size(), 2);
   auto interval =
-      duration_cast<std::chrono::milliseconds>(times[1] - times[0]).count();
+    duration_cast<std::chrono::milliseconds>(times[1] - times[0]).count();
   EXPECT_GE(interval, 50);
 }
 
@@ -237,7 +236,7 @@ TEST_F(ThreadPoolTest, CancelTask_DelayedBeforeExecution) {
   ThreadPool pool(config);
 
   auto [future, handle] =
-      pool.SubmitDelayed(std::chrono::milliseconds(5000), []() { return 1; });
+    pool.SubmitDelayed(std::chrono::milliseconds(5000), []() { return 1; });
 
   handle.Cancel();
 
@@ -270,13 +269,13 @@ TEST_F(ThreadPoolTest, TaskHandle_IsCancelled) {
   ThreadPool pool(config);
 
   auto [future1, handle1] =
-      pool.SubmitDelayed(std::chrono::milliseconds(100), []() {});
+    pool.SubmitDelayed(std::chrono::milliseconds(100), []() {});
   handle1.Cancel();
 
   EXPECT_TRUE(handle1.IsCancelled());
 
   auto [future2, handle2] =
-      pool.SubmitDelayed(std::chrono::milliseconds(5000), []() {});
+    pool.SubmitDelayed(std::chrono::milliseconds(5000), []() {});
   EXPECT_FALSE(handle2.IsCancelled());
 }
 
@@ -433,7 +432,7 @@ TEST_F(ThreadPoolTest, Submit_VariadicArgs) {
   ThreadPool pool(2);
 
   auto future =
-      pool.Submit([](int a, int b, int c) { return a + b + c; }, 1, 2, 3);
+    pool.Submit([](int a, int b, int c) { return a + b + c; }, 1, 2, 3);
 
   EXPECT_EQ(future.get(), 6);
 }
@@ -466,7 +465,7 @@ TEST_F(ThreadPoolTest, ParallelFor_Basic) {
   auto func = [](int &val) { val *= 2; };
 
   GlobalThreadPool::Instance().Submit(
-      [&data, &func]() { ParallelFor(data.begin(), data.end(), func); });
+    [&data, &func]() { ParallelFor(data.begin(), data.end(), func); });
 
   this_thread::sleep_for(std::chrono::milliseconds(100));
 }
@@ -477,7 +476,7 @@ TEST_F(ThreadPoolTest, SubmitDelayed_CancelAfterExecution) {
   ThreadPool pool(config);
 
   auto [future, handle] =
-      pool.SubmitDelayed(std::chrono::milliseconds(20), []() { return 1; });
+    pool.SubmitDelayed(std::chrono::milliseconds(20), []() { return 1; });
 
   EXPECT_EQ(future.get(), 1);
 

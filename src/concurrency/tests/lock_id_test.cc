@@ -10,32 +10,24 @@
 using namespace std;
 using namespace utils::concurrency;
 
-// ===========================================================================
-// ExclusiveLock suite  (int IDs)
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(ExclusiveLock, GuardIsTrueAfterLock) {
   LockId<int> locker;
   auto g = locker.Lock(1);
   EXPECT_TRUE(static_cast<bool>(g));
 }
 
-//------------------------------------------------------------------------
 TEST(ExclusiveLock, IdAccessorMatchesRequestedId) {
   LockId<int> locker;
   auto g = locker.Lock(42);
   EXPECT_EQ(g.id(), 42);
 }
 
-//------------------------------------------------------------------------
 TEST(ExclusiveLock, ActiveEntryCountIsOneWhileHeld) {
   LockId<int> locker;
   auto g = locker.Lock(7);
   EXPECT_EQ(locker.ActiveEntryCount(), 1u);
 }
 
-//------------------------------------------------------------------------
 TEST(ExclusiveLock, ActiveEntryCountDropsToZeroAfterScopeExit) {
   LockId<int> locker;
   {
@@ -45,7 +37,6 @@ TEST(ExclusiveLock, ActiveEntryCountDropsToZeroAfterScopeExit) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-//------------------------------------------------------------------------
 TEST(ExclusiveLock, ManualReleaseDropsCountAndClearsGuard) {
   LockId<int> locker;
   auto g = locker.Lock(3);
@@ -55,7 +46,6 @@ TEST(ExclusiveLock, ManualReleaseDropsCountAndClearsGuard) {
   EXPECT_FALSE(static_cast<bool>(g));
 }
 
-//------------------------------------------------------------------------
 TEST(ExclusiveLock, DoubleReleaseIsIdempotent) {
   LockId<int> locker;
   auto g = locker.Lock(3);
@@ -64,11 +54,6 @@ TEST(ExclusiveLock, DoubleReleaseIsIdempotent) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-// ===========================================================================
-// MoveSemantics suite
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(MoveSemantics, MoveConstructorTransfersOwnership) {
   LockId<int> locker;
   auto g1 = locker.Lock(10);
@@ -81,7 +66,6 @@ TEST(MoveSemantics, MoveConstructorTransfersOwnership) {
   EXPECT_EQ(locker.ActiveEntryCount(), 1u);
 }
 
-//------------------------------------------------------------------------
 TEST(MoveSemantics, MoveAssignmentTransfersOwnership) {
   LockId<int> locker;
   auto g1 = locker.Lock(10);
@@ -93,7 +77,6 @@ TEST(MoveSemantics, MoveAssignmentTransfersOwnership) {
   EXPECT_TRUE(static_cast<bool>(g2));
 }
 
-//------------------------------------------------------------------------
 TEST(MoveSemantics, MovedFromGuardDoesNotDoubleRelease) {
   LockId<int> locker;
   {
@@ -104,7 +87,6 @@ TEST(MoveSemantics, MovedFromGuardDoesNotDoubleRelease) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-//------------------------------------------------------------------------
 TEST(MoveSemantics, SharedGuardMoveConstructor) {
   LockId<int> locker;
   auto g1 = locker.LockShared(5);
@@ -116,18 +98,12 @@ TEST(MoveSemantics, SharedGuardMoveConstructor) {
   EXPECT_TRUE(static_cast<bool>(g2));
 }
 
-// ===========================================================================
-// TryLock suite
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(TryLock, SucceedsWhenIdIsFree) {
   LockId<int> locker;
   auto g = locker.TryLock(20);
   EXPECT_TRUE(static_cast<bool>(g));
 }
 
-//------------------------------------------------------------------------
 TEST(TryLock, FailsWhenExclusiveLockAlreadyHeld) {
   LockId<int> locker;
   auto held = locker.Lock(99);
@@ -135,7 +111,6 @@ TEST(TryLock, FailsWhenExclusiveLockAlreadyHeld) {
   EXPECT_FALSE(static_cast<bool>(attempt));
 }
 
-//------------------------------------------------------------------------
 TEST(TryLock, FailsWhenSharedLockAlreadyHeld) {
   LockId<int> locker;
   auto reader = locker.LockShared(99);
@@ -143,7 +118,6 @@ TEST(TryLock, FailsWhenSharedLockAlreadyHeld) {
   EXPECT_FALSE(static_cast<bool>(writer_attempt));
 }
 
-//------------------------------------------------------------------------
 TEST(TryLock, SucceedsAfterHolderReleases) {
   LockId<int> locker;
   {
@@ -153,11 +127,6 @@ TEST(TryLock, SucceedsAfterHolderReleases) {
   EXPECT_TRUE(static_cast<bool>(g));
 }
 
-// ===========================================================================
-// TryLockFor suite
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(TryLockFor, ReturnsEmptyGuardWhenContested) {
   LockId<int> locker;
   auto held = locker.Lock(5);
@@ -169,14 +138,12 @@ TEST(TryLockFor, ReturnsEmptyGuardWhenContested) {
   EXPECT_FALSE(static_cast<bool>(attempt));
 }
 
-//------------------------------------------------------------------------
 TEST(TryLockFor, SucceedsOnFreeId) {
   LockId<int> locker;
   auto g = locker.TryLockFor(1, chrono::milliseconds(100));
   EXPECT_TRUE(static_cast<bool>(g));
 }
 
-//------------------------------------------------------------------------
 TEST(TryLockFor, SharedReturnsEmptyGuardWhenExclusiveHeld) {
   LockId<int> locker;
   auto held = locker.Lock(5);
@@ -184,18 +151,12 @@ TEST(TryLockFor, SharedReturnsEmptyGuardWhenExclusiveHeld) {
   EXPECT_FALSE(static_cast<bool>(attempt));
 }
 
-//------------------------------------------------------------------------
 TEST(TryLockFor, SharedSucceedsOnFreeId) {
   LockId<int> locker;
   auto g = locker.TryLockSharedFor(1, chrono::milliseconds(100));
   EXPECT_TRUE(static_cast<bool>(g));
 }
 
-// ===========================================================================
-// SharedLock suite
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(SharedLock, MultipleReadersCanCoexist) {
   LockId<int> locker;
   auto g1 = locker.LockShared(7);
@@ -205,17 +166,17 @@ TEST(SharedLock, MultipleReadersCanCoexist) {
   EXPECT_EQ(locker.ActiveEntryCount(), 1u);
 }
 
-//------------------------------------------------------------------------
 TEST(SharedLock, EntryRemovedAfterAllReadersRelease) {
   LockId<int> locker;
   auto g1 = locker.LockShared(7);
   auto g2 = locker.LockShared(7);
+  EXPECT_EQ(locker.ActiveEntryCount(), 1u);
   g1.Release();
+  EXPECT_EQ(locker.ActiveEntryCount(), 1u);
   g2.Release();
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-//------------------------------------------------------------------------
 TEST(SharedLock, ExclusiveBlockedByActiveReader) {
   LockId<int> locker;
   auto reader = locker.LockShared(3);
@@ -223,7 +184,6 @@ TEST(SharedLock, ExclusiveBlockedByActiveReader) {
   EXPECT_FALSE(static_cast<bool>(writer_attempt));
 }
 
-//------------------------------------------------------------------------
 TEST(SharedLock, ExclusiveSucceedsAfterAllReadersRelease) {
   LockId<int> locker;
   {
@@ -234,14 +194,12 @@ TEST(SharedLock, ExclusiveSucceedsAfterAllReadersRelease) {
   EXPECT_TRUE(static_cast<bool>(writer));
 }
 
-//------------------------------------------------------------------------
 TEST(SharedLock, TrySharedSucceedsOnFreeId) {
   LockId<int> locker;
   auto g = locker.TryLockShared(55);
   EXPECT_TRUE(static_cast<bool>(g));
 }
 
-//------------------------------------------------------------------------
 TEST(SharedLock, TrySharedFailsWhenExclusiveHeld) {
   LockId<int> locker;
   auto writer = locker.Lock(55);
@@ -249,11 +207,6 @@ TEST(SharedLock, TrySharedFailsWhenExclusiveHeld) {
   EXPECT_FALSE(static_cast<bool>(reader));
 }
 
-// ===========================================================================
-// MultipleIds suite
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(MultipleIds, DistinctIdsDoNotBlockEachOther) {
   LockId<string> locker;
   auto g1 = locker.Lock("alice");
@@ -263,7 +216,6 @@ TEST(MultipleIds, DistinctIdsDoNotBlockEachOther) {
   EXPECT_EQ(locker.ActiveEntryCount(), 2u);
 }
 
-//------------------------------------------------------------------------
 TEST(MultipleIds, EntryCountTracksDistinctIds) {
   LockId<int> locker;
   auto g1 = locker.Lock(1);
@@ -274,7 +226,6 @@ TEST(MultipleIds, EntryCountTracksDistinctIds) {
   EXPECT_EQ(locker.ActiveEntryCount(), 2u);
 }
 
-//------------------------------------------------------------------------
 TEST(MultipleIds, SameIdOnlyCountsOnce) {
   LockId<int> locker;
   auto r1 = locker.LockShared(100);
@@ -283,11 +234,6 @@ TEST(MultipleIds, SameIdOnlyCountsOnce) {
   EXPECT_EQ(locker.ActiveEntryCount(), 1u);
 }
 
-// ===========================================================================
-// Concurrency suite
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(Concurrency, ExclusiveLockProtectsCounter) {
   LockId<int> locker;
   int counter = 0;
@@ -311,7 +257,6 @@ TEST(Concurrency, ExclusiveLockProtectsCounter) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-//------------------------------------------------------------------------
 TEST(Concurrency, SharedLockAllowsConcurrentReads) {
   LockId<int> locker;
   // All threads read the same value concurrently; no corruption expected.
@@ -338,7 +283,6 @@ TEST(Concurrency, SharedLockAllowsConcurrentReads) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-//------------------------------------------------------------------------
 TEST(Concurrency, DistinctIdsConcurrentlyWithNoContention) {
   // Each thread locks its own exclusive ID – zero cross-thread contention.
   LockId<int> locker;
@@ -365,11 +309,6 @@ TEST(Concurrency, DistinctIdsConcurrentlyWithNoContention) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-// ===========================================================================
-// LockId<int>  –  repeated lock/unlock cycle
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(LockUnlockCycle, IntIdCycleIsStable) {
   LockId<int> locker;
   for (int i = 0; i < 100; ++i) {
@@ -379,7 +318,6 @@ TEST(LockUnlockCycle, IntIdCycleIsStable) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-//------------------------------------------------------------------------
 TEST(LockUnlockCycle, StringIdCycleIsStable) {
   LockId<string> locker;
   for (int i = 0; i < 100; ++i) {
@@ -389,7 +327,6 @@ TEST(LockUnlockCycle, StringIdCycleIsStable) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-//------------------------------------------------------------------------
 TEST(LockUnlockCycle, ActiveEntryCountZeroAfterMixedIntOps) {
   LockId<int> locker;
   for (int i = 0; i < 50; ++i) {
@@ -399,7 +336,6 @@ TEST(LockUnlockCycle, ActiveEntryCountZeroAfterMixedIntOps) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-//------------------------------------------------------------------------
 TEST(LockUnlockCycle, ActiveEntryCountZeroAfterMixedStringOps) {
   LockId<string> locker;
   for (int i = 0; i < 50; ++i) {
@@ -409,18 +345,12 @@ TEST(LockUnlockCycle, ActiveEntryCountZeroAfterMixedStringOps) {
   EXPECT_EQ(locker.ActiveEntryCount(), 0u);
 }
 
-// ===========================================================================
-// NumShards suite
-// ===========================================================================
-
-//------------------------------------------------------------------------
 TEST(NumShards, DefaultShardCountMatchesConstant) {
   LockId<int> locker;
   EXPECT_EQ(locker.NumShards(), LockId<int>::kDefaultShards);
 }
 
-//------------------------------------------------------------------------
 TEST(NumShards, CustomShardCountRespected) {
-  LockId<int> locker(/*num_shards=*/8);
+  LockId<int> locker(8);
   EXPECT_EQ(locker.NumShards(), 8u);
 }

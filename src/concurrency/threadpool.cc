@@ -13,20 +13,18 @@ namespace utils {
 namespace concurrency {
 
 // ---------------------------------------------------------------------------
-// Construction / Destruction
-// ---------------------------------------------------------------------------
 
 ThreadPool::ThreadPool(ThreadPoolConfig config) : config_(move(config)) {
   // Validate config.
   CHECK_GE(config_.max_threads, 1u) << "max_threads must be >= 1";
   CHECK_LE(config_.min_threads, config_.max_threads)
-      << "min_threads must be <= max_threads";
+    << "min_threads must be <= max_threads";
 
   // Clamp initial_threads into [min, max].
   config_.initial_threads =
-      clamp(config_.initial_threads, config_.min_threads, config_.max_threads);
+    clamp(config_.initial_threads, config_.min_threads, config_.max_threads);
 
-  // Pre-allocate per-thread work-stealing queues.
+  // Pre-allocate per thread work stealing queues.
   if (config_.enable_work_stealing) {
     thread_local_queues_.resize(config_.max_threads);
     for (auto &q : thread_local_queues_) {
@@ -34,7 +32,7 @@ ThreadPool::ThreadPool(ThreadPoolConfig config) : config_(move(config)) {
     }
   }
 
-  // Start delay-scheduler before workers so tasks queued immediately are seen.
+  // Start delay scheduler before workers so tasks queued immediately are seen.
   if (config_.enable_delayed_tasks) {
     delay_scheduler_thread_ = thread([this] { DelaySchedulerLoop(); });
   }
@@ -45,34 +43,37 @@ ThreadPool::ThreadPool(ThreadPoolConfig config) : config_(move(config)) {
   }
 
   LOG(INFO) << "ThreadPool \"" << config_.thread_name_prefix
-            << "\" started with " << config_.initial_threads << " threads.";
+            << "\" started with " << config_.initial_threads << " threads";
 }
 
+// ---------------------------------------------------------------------------
+
 ThreadPool::ThreadPool(uint32_t num_threads)
-    : ThreadPool([num_threads]() {
-        CHECK_GE(num_threads, 1u) << "num_threads must be >= 1";
-        ThreadPoolConfig cfg;
-        cfg.min_threads = num_threads;
-        cfg.max_threads = num_threads;
-        cfg.initial_threads = num_threads;
-        return cfg;
-      }()) {}
+  : ThreadPool([num_threads]() {
+      CHECK_GE(num_threads, 1u) << "num_threads must be >= 1";
+      ThreadPoolConfig cfg;
+      cfg.min_threads = num_threads;
+      cfg.max_threads = num_threads;
+      cfg.initial_threads = num_threads;
+      return cfg;
+    }()) {}
+
+// ---------------------------------------------------------------------------
 
 ThreadPool::~ThreadPool() { ShutdownNow(); }
 
 // ---------------------------------------------------------------------------
-// EnqueueTask  (internal helper, no lock held on entry)
-// ---------------------------------------------------------------------------
+
 void ThreadPool::EnqueueTask(TaskPriority priority, function<void()> task) {
   {
     lock_guard<mutex> lock(queue_mutex_);
     CHECK(!shutdown_.load(memory_order_relaxed))
-        << "Cannot submit tasks to a shut-down ThreadPool";
+      << "Cannot submit tasks to a shutdown ThreadPool";
 
     if (config_.max_queue_size > 0 &&
         GetQueueSize() >= config_.max_queue_size) {
       LOG(ERROR) << "ThreadPool queue is full (max=" << config_.max_queue_size
-                 << "); task dropped.";
+                 << "); task dropped";
       return;
     }
 
@@ -91,16 +92,15 @@ void ThreadPool::EnqueueTask(TaskPriority priority, function<void()> task) {
 }
 
 // ---------------------------------------------------------------------------
-// WorkerLoop
-// ---------------------------------------------------------------------------
+
 void ThreadPool::WorkerLoop(uint32_t thread_id) {
   SetThreadName(config_.thread_name_prefix + "_" + to_string(thread_id));
-  DLOG(INFO) << "Worker thread " << thread_id << " started.";
+  VLOG(2) << "Worker thread " << thread_id << " started";
 
   auto last_work_time = chrono::steady_clock::now();
 
   while (true) {
-    // ---- Handle pause -------------------------------------------------------
+    // Handle pause
     if (paused_.load(memory_order_relaxed)) {
       unique_lock<mutex> lock(queue_mutex_);
       pause_condition_.wait(lock, [this] {
@@ -109,7 +109,7 @@ void ThreadPool::WorkerLoop(uint32_t thread_id) {
       });
     }
 
-    // ---- Shutdown without draining ------------------------------------------
+    // Shutdown without draining
     if (shutdown_.load(memory_order_relaxed) && GetQueueSize() == 0) {
       break;
     }
@@ -117,10 +117,10 @@ void ThreadPool::WorkerLoop(uint32_t thread_id) {
     function<void()> task;
     bool got_task = false;
 
-    // 1. Check this thread's local queue (work-stealing source).
+    // 1. Check this thread's local queue; work stealing source.
     if (config_.enable_work_stealing) {
       const uint32_t slot =
-          thread_id % static_cast<uint32_t>(thread_local_queues_.size());
+        thread_id % static_cast<uint32_t>(thread_local_queues_.size());
       lock_guard<mutex> lock(queue_mutex_);
       auto &local = *thread_local_queues_[slot];
       if (!local.empty()) {
@@ -146,16 +146,16 @@ void ThreadPool::WorkerLoop(uint32_t thread_id) {
       last_work_time = chrono::steady_clock::now();
       task();
       // queue_size was already decremented inside DequeueTask / stealing path.
-      // For the local-queue path decrement here.
+      // For the local queue path decrement here.
     } else {
-      // Check idle timeout – allow graceful thread retirement.
+      // Check idle timeout; allow graceful thread retirement.
       const auto idle = chrono::steady_clock::now() - last_work_time;
       if (idle > config_.thread_idle_timeout) {
         lock_guard<mutex> lock(threads_mutex_);
         const uint32_t current = static_cast<uint32_t>(threads_.size());
         if (current > config_.min_threads) {
-          DLOG(INFO) << "Worker thread " << thread_id
-                     << " retiring due to idleness.";
+          VLOG(2) << "Worker thread " << thread_id
+                  << " retiring due to idleness";
           break;
         }
       }
@@ -169,21 +169,20 @@ void ThreadPool::WorkerLoop(uint32_t thread_id) {
     }
   }
 
-  DLOG(INFO) << "Worker thread " << thread_id << " exiting.";
+  VLOG(2) << "Worker thread " << thread_id << " exiting";
 }
 
 // ---------------------------------------------------------------------------
-// DelaySchedulerLoop
-// ---------------------------------------------------------------------------
+
 void ThreadPool::DelaySchedulerLoop() {
   SetThreadName(config_.thread_name_prefix + "_Scheduler");
-  DLOG(INFO) << "Delay-scheduler thread started.";
+  VLOG(2) << "Delay scheduler thread started";
 
   while (!shutdown_.load(memory_order_relaxed)) {
     try {
       ProcessDelayedTasks();
     } catch (...) {
-      LOG(ERROR) << "Unexpected exception in delay scheduler; continuing.";
+      LOG(ERROR) << "Unexpected exception in delay scheduler; continuing";
     }
 
     // Sleep until the next scheduled task, but no longer than the configured
@@ -195,27 +194,26 @@ void ThreadPool::DelaySchedulerLoop() {
         next_wake = delayed_tasks_.top().execute_time;
       } else {
         next_wake =
-            chrono::steady_clock::now() + config_.delay_scheduler_interval;
+          chrono::steady_clock::now() + config_.delay_scheduler_interval;
       }
 
       delayed_condition_.wait_until(lock, next_wake, [this] {
         return shutdown_.load(memory_order_relaxed) ||
                (!delayed_tasks_.empty() && delayed_tasks_.top().execute_time <=
-                                               chrono::steady_clock::now());
+                                             chrono::steady_clock::now());
       });
     }
   }
 
-  DLOG(INFO) << "Delay-scheduler thread exiting.";
+  VLOG(2) << "Delay scheduler thread exiting";
 }
 
 // ---------------------------------------------------------------------------
-// ProcessDelayedTasks
-// ---------------------------------------------------------------------------
+
 void ThreadPool::ProcessDelayedTasks() {
   const auto now = chrono::steady_clock::now();
 
-  // Collect all tasks that are ready under the delayed-queue lock.
+  // Collect all tasks that are ready under the delayed queue lock.
   vector<DelayedTask> ready;
   {
     lock_guard<mutex> lock(delayed_queue_mutex_);
@@ -264,8 +262,7 @@ void ThreadPool::ProcessDelayedTasks() {
 }
 
 // ---------------------------------------------------------------------------
-// DequeueTask  (must be called with queue_mutex_ held)
-// ---------------------------------------------------------------------------
+
 bool ThreadPool::DequeueTask(function<void()> &out_task) {
   if (config_.enable_priority_queue && !priority_tasks_.empty()) {
     // priority_queue::top() is const; we need a move.
@@ -284,8 +281,7 @@ bool ThreadPool::DequeueTask(function<void()> &out_task) {
 }
 
 // ---------------------------------------------------------------------------
-// StealTask
-// ---------------------------------------------------------------------------
+
 function<void()> ThreadPool::StealTask(uint32_t thief_id) {
   lock_guard<mutex> lock(queue_mutex_);
   const uint32_t n = static_cast<uint32_t>(thread_local_queues_.size());
@@ -305,21 +301,20 @@ function<void()> ThreadPool::StealTask(uint32_t thief_id) {
 }
 
 // ---------------------------------------------------------------------------
-// AddWorkerThread / TryExpandPool
-// ---------------------------------------------------------------------------
+
 void ThreadPool::AddWorkerThread() {
   const uint32_t thread_id = next_thread_id_.fetch_add(1, memory_order_relaxed);
   lock_guard<mutex> lock(threads_mutex_);
   threads_.emplace_back([this, thread_id] { WorkerLoop(thread_id); });
 }
 
+// ---------------------------------------------------------------------------
+
 void ThreadPool::TryExpandPool() {
   const uint32_t thread_count = GetThreadCount();
   if (thread_count >= config_.max_threads)
     return;
 
-  // Expand if the queue depth has grown beyond 2× the current pool size and
-  // all threads appear busy.
   if (GetQueueSize() > thread_count * 2 &&
       GetActiveThreadCount() >= thread_count) {
     AddWorkerThread();
@@ -327,11 +322,12 @@ void ThreadPool::TryExpandPool() {
 }
 
 // ---------------------------------------------------------------------------
-// CancelTask
-// ---------------------------------------------------------------------------
+
 bool ThreadPool::CancelTask(const TaskHandle &handle) {
   return CancelTask(handle.GetId());
 }
+
+// ---------------------------------------------------------------------------
 
 bool ThreadPool::CancelTask(uint64_t task_id) {
   lock_guard<mutex> lock(delayed_queue_mutex_);
@@ -344,8 +340,7 @@ bool ThreadPool::CancelTask(uint64_t task_id) {
 }
 
 // ---------------------------------------------------------------------------
-// WaitForTasks
-// ---------------------------------------------------------------------------
+
 void ThreadPool::WaitForTasks() {
   unique_lock<mutex> lock(queue_mutex_);
   finish_condition_.wait(lock, [this] {
@@ -355,25 +350,25 @@ void ThreadPool::WaitForTasks() {
 }
 
 // ---------------------------------------------------------------------------
-// Pause / Resume
-// ---------------------------------------------------------------------------
+
 void ThreadPool::Pause() {
   paused_.store(true, memory_order_relaxed);
-  LOG(INFO) << "ThreadPool paused.";
+  LOG(INFO) << "ThreadPool paused";
 }
+
+// ---------------------------------------------------------------------------
 
 void ThreadPool::Resume() {
   paused_.store(false, memory_order_relaxed);
   pause_condition_.notify_all();
-  LOG(INFO) << "ThreadPool resumed.";
+  LOG(INFO) << "ThreadPool resumed";
 }
 
 // ---------------------------------------------------------------------------
-// Shutdown / ShutdownNow
-// ---------------------------------------------------------------------------
+
 void ThreadPool::Shutdown(bool wait_for_tasks) {
   LOG(INFO) << "ThreadPool \"" << config_.thread_name_prefix
-            << "\" shutting down (wait=" << wait_for_tasks << ").";
+            << "\" shutting down (wait=" << wait_for_tasks << ")";
 
   if (wait_for_tasks) {
     WaitForTasks();
@@ -399,12 +394,14 @@ void ThreadPool::Shutdown(bool wait_for_tasks) {
       t.join();
   }
   threads_.clear();
-  LOG(INFO) << "ThreadPool \"" << config_.thread_name_prefix << "\" stopped.";
+  LOG(INFO) << "ThreadPool \"" << config_.thread_name_prefix << "\" stopped";
 }
+
+// ---------------------------------------------------------------------------
 
 void ThreadPool::ShutdownNow() {
   LOG(INFO) << "ThreadPool \"" << config_.thread_name_prefix
-            << "\" forced shutdown.";
+            << "\" forced shutdown";
 
   {
     lock_guard<mutex> ql(queue_mutex_);
@@ -446,12 +443,11 @@ void ThreadPool::ShutdownNow() {
   }
   threads_.clear();
   LOG(INFO) << "ThreadPool \"" << config_.thread_name_prefix
-            << "\" force-stopped.";
+            << "\" force-stopped";
 }
 
 // ---------------------------------------------------------------------------
-// Resize
-// ---------------------------------------------------------------------------
+
 void ThreadPool::Resize(uint32_t new_size) {
   new_size = clamp(new_size, config_.min_threads, config_.max_threads);
 
@@ -470,23 +466,26 @@ void ThreadPool::Resize(uint32_t new_size) {
     // and exit once idle.
     condition_.notify_all();
     LOG(INFO) << "ThreadPool resize to " << new_size
-              << " requested; surplus threads will retire when idle.";
+              << " requested; surplus threads will retire when idle";
   }
 }
 
 // ---------------------------------------------------------------------------
-// Accessors
-// ---------------------------------------------------------------------------
+
 uint32_t ThreadPool::GetThreadCount() const {
   lock_guard<mutex> lock(threads_mutex_);
   return static_cast<uint32_t>(threads_.size());
 }
+
+// ---------------------------------------------------------------------------
 
 uint32_t ThreadPool::GetQueueSize() const {
   // NOTE: called with or without queue_mutex_ held; using atomic stats counter
   // to avoid re-entrancy / deadlock.
   return stats_.queue_size.load(memory_order_relaxed);
 }
+
+// ---------------------------------------------------------------------------
 
 void ThreadPool::ResetStats() {
   stats_.tasks_submitted.store(0, memory_order_relaxed);
@@ -498,38 +497,30 @@ void ThreadPool::ResetStats() {
   stats_.start_time = chrono::steady_clock::now();
 }
 
+// ---------------------------------------------------------------------------
+
 void ThreadPool::SetMaxQueueSize(uint32_t max_size) {
   config_.max_queue_size = max_size;
 }
 
 // ---------------------------------------------------------------------------
-// SetThreadName  (platform-specific)
-// ---------------------------------------------------------------------------
+
 void ThreadPool::SetThreadName(const string &name) {
 #ifdef __linux__
   // pthread_setname_np limits name to 15 characters + null terminator.
   const string truncated = name.substr(0, 15);
   if (pthread_setname_np(pthread_self(), truncated.c_str()) != 0) {
-    DLOG(WARNING) << "pthread_setname_np failed for name: " << name;
+    LOG(WARNING) << "pthread_setname_np failed for name: " << name;
   }
 #elif defined(_WIN32)
-  // SetThreadDescription (Windows 10 / Server 2016+)
-  // Convert narrow string to wide string.
-  const int wlen =
-      MultiByteToWideChar(CP_UTF8, 0, name.c_str(), -1, nullptr, 0);
-  if (wlen > 0) {
-    wstring wname(wlen, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, name.c_str(), -1, &wname[0], wlen);
-    SetThreadDescription(GetCurrentThread(), wname.c_str());
-  }
+  // TODO: Implement this
 #elif defined(__APPLE__)
   pthread_setname_np(name.substr(0, 63).c_str());
 #endif
 }
 
 // ---------------------------------------------------------------------------
-// GlobalThreadPool
-// ---------------------------------------------------------------------------
+
 once_flag GlobalThreadPool::initialized_;
 unique_ptr<ThreadPool> GlobalThreadPool::instance_;
 
@@ -538,6 +529,8 @@ ThreadPool &GlobalThreadPool::Instance() {
   DCHECK(instance_ != nullptr);
   return *instance_;
 }
+
+// ---------------------------------------------------------------------------
 
 } // namespace concurrency
 } // namespace utils

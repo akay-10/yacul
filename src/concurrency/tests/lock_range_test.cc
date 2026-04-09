@@ -2,51 +2,30 @@
 
 #include <atomic>
 #include <chrono>
+#include <gtest/gtest.h>
 #include <limits>
 #include <stdexcept>
 #include <thread>
 #include <vector>
 
-#include <gtest/gtest.h>
-
 using namespace std;
 using namespace chrono_literals;
 using namespace utils::concurrency;
 
-// ===========================================================================
-// Global test environment — process-wide setup / teardown hook.
-// Extend SetUp() / TearDown() for things like logging initialisation,
-// sanitiser configuration, or shared thread-pool lifecycle.
-// ===========================================================================
-
 class LockRangeEnvironment : public ::testing::Environment {
 public:
-  void SetUp() override {
-    // Reserved for process-wide initialisation (e.g. custom allocator,
-    // tracing backend).  Currently a no-op.
-  }
+  void SetUp() override {}
 
-  void TearDown() override {
-    // Reserved for process-wide teardown.
-  }
+  void TearDown() override {}
 };
 
-// NOTE: GoogleTest takes ownership of the raw pointer; do not delete it.
 static ::testing::Environment *const kGlobalEnv =
-    ::testing::AddGlobalTestEnvironment(new LockRangeEnvironment);
-
-// ===========================================================================
-// Fixture — provides a fresh LockRange per test.
-// ===========================================================================
+  ::testing::AddGlobalTestEnvironment(new LockRangeEnvironment);
 
 class LockRangeTest : public ::testing::Test {
 protected:
   LockRange lr_;
 };
-
-// ===========================================================================
-// Basic guard state tests
-// ===========================================================================
 
 TEST_F(LockRangeTest, ExclusiveLockAcquiredAndReleased) {
   auto g = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
@@ -63,8 +42,6 @@ TEST_F(LockRangeTest, ExclusiveLockAcquiredAndReleased) {
   EXPECT_EQ(lr_.ActiveLockCount(), 0u);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, SharedLockAcquiredAndReleased) {
   auto g = lr_.Lock(0, 100, LockRange::Mode::kShared);
 
@@ -80,14 +57,10 @@ TEST_F(LockRangeTest, SharedLockAcquiredAndReleased) {
   EXPECT_EQ(lr_.ActiveLockCount(), 0u);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, DefaultConstructedGuardIsInvalid) {
   LockRange::Guard g;
   EXPECT_FALSE(g.Valid());
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, ReleaseIsIdempotent) {
   auto g = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
@@ -98,8 +71,6 @@ TEST_F(LockRangeTest, ReleaseIsIdempotent) {
   EXPECT_EQ(lr_.ActiveLockCount(), 0u);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, GuardMoveConstruct) {
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
   LockRange::Guard g2 = move(g1);
@@ -108,8 +79,6 @@ TEST_F(LockRangeTest, GuardMoveConstruct) {
   EXPECT_TRUE(g2.Valid());
   EXPECT_EQ(lr_.ActiveLockCount(), 1u);
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, GuardMoveAssignReleasesDestination) {
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
@@ -125,8 +94,6 @@ TEST_F(LockRangeTest, GuardMoveAssignReleasesDestination) {
   EXPECT_EQ(lr_.ActiveLockCount(), 1u);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, DestructorReleasesLock) {
   {
     auto g = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
@@ -134,10 +101,6 @@ TEST_F(LockRangeTest, DestructorReleasesLock) {
   }
   EXPECT_EQ(lr_.ActiveLockCount(), 0u);
 }
-
-// ===========================================================================
-// Compatibility / overlap rules
-// ===========================================================================
 
 TEST_F(LockRangeTest, MultipleConcurrentSharedLocksOnSameRange) {
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kShared);
@@ -150,8 +113,6 @@ TEST_F(LockRangeTest, MultipleConcurrentSharedLocksOnSameRange) {
   EXPECT_EQ(lr_.ActiveLockCount(), 3u);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, NonOverlappingExclusiveLocksCoexist) {
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
   auto g2 = lr_.Lock(200, 100, LockRange::Mode::kExclusive);
@@ -162,8 +123,6 @@ TEST_F(LockRangeTest, NonOverlappingExclusiveLocksCoexist) {
   EXPECT_TRUE(g3.Valid());
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, AdjacentRangesAreNotOverlapping) {
   // [0, 100) and [100, 200) share a boundary but do not overlap.
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
@@ -173,22 +132,14 @@ TEST_F(LockRangeTest, AdjacentRangesAreNotOverlapping) {
   EXPECT_TRUE(g2.Valid());
 }
 
-// ===========================================================================
-// IsLockedAny tests
-// ===========================================================================
-
 TEST_F(LockRangeTest, IsLockedAnyReturnsFalseWhenEmpty) {
   EXPECT_FALSE(lr_.IsLockedAny(0, 100));
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, IsLockedAnyDetectsExactRange) {
   auto g = lr_.Lock(50, 50, LockRange::Mode::kExclusive); // [50, 100)
   EXPECT_TRUE(lr_.IsLockedAny(50, 50));
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, IsLockedAnyDetectsPartialOverlap) {
   auto g = lr_.Lock(50, 50, LockRange::Mode::kExclusive); // [50, 100)
@@ -197,16 +148,12 @@ TEST_F(LockRangeTest, IsLockedAnyDetectsPartialOverlap) {
   EXPECT_TRUE(lr_.IsLockedAny(60, 10)); // [60,  70) — contained within
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, IsLockedAnyMissesAdjacentAndDisjointRanges) {
   auto g = lr_.Lock(50, 50, LockRange::Mode::kExclusive); // [50, 100)
   EXPECT_FALSE(lr_.IsLockedAny(0, 50));    // [0,   50) — adjacent left
   EXPECT_FALSE(lr_.IsLockedAny(100, 100)); // [100, 200) — adjacent right
   EXPECT_FALSE(lr_.IsLockedAny(200, 100)); // far right
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, IsLockedAnyReturnsFalseAfterRelease) {
   auto g = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
@@ -215,10 +162,6 @@ TEST_F(LockRangeTest, IsLockedAnyReturnsFalseAfterRelease) {
   EXPECT_FALSE(lr_.IsLockedAny(0, 100));
 }
 
-// ===========================================================================
-// TryLock (non-blocking) tests
-// ===========================================================================
-
 TEST_F(LockRangeTest, TryLockSucceedsWhenFree) {
   LockRange::Status s = LockRange::Status::kTimeout;
   auto g = lr_.TryLock(0, 100, LockRange::Mode::kExclusive, &s);
@@ -226,8 +169,6 @@ TEST_F(LockRangeTest, TryLockSucceedsWhenFree) {
   EXPECT_TRUE(g.Valid());
   EXPECT_EQ(s, LockRange::Status::kAcquired);
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, TryLockExclusiveFailsUnderExclusiveConflict) {
   auto holder = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
@@ -239,19 +180,14 @@ TEST_F(LockRangeTest, TryLockExclusiveFailsUnderExclusiveConflict) {
   EXPECT_EQ(s, LockRange::Status::kTimeout);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, TryLockSharedFailsUnderExclusiveConflict) {
   auto holder = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
-
   LockRange::Status s = LockRange::Status::kAcquired;
   auto g = lr_.TryLock(0, 100, LockRange::Mode::kShared, &s);
 
   EXPECT_FALSE(g.Valid());
   EXPECT_EQ(s, LockRange::Status::kTimeout);
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, TryLockSharedSucceedsAlongsideExistingShared) {
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kShared);
@@ -263,8 +199,6 @@ TEST_F(LockRangeTest, TryLockSharedSucceedsAlongsideExistingShared) {
   EXPECT_EQ(s, LockRange::Status::kAcquired);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, TryLockExclusiveFailsAlongsideShared) {
   auto shared = lr_.Lock(0, 100, LockRange::Mode::kShared);
 
@@ -275,10 +209,6 @@ TEST_F(LockRangeTest, TryLockExclusiveFailsAlongsideShared) {
   EXPECT_EQ(s, LockRange::Status::kTimeout);
 }
 
-// ===========================================================================
-// TryLockFor / TryLockUntil (timed) tests
-// ===========================================================================
-
 TEST_F(LockRangeTest, TryLockForSucceedsWhenFree) {
   LockRange::Status s = LockRange::Status::kTimeout;
   auto g = lr_.TryLockFor(0, 100, LockRange::Mode::kExclusive, 200ms, &s);
@@ -286,8 +216,6 @@ TEST_F(LockRangeTest, TryLockForSucceedsWhenFree) {
   EXPECT_TRUE(g.Valid());
   EXPECT_EQ(s, LockRange::Status::kAcquired);
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, TryLockForTimesOutUnderContention) {
   auto holder = lr_.Lock(0, 1000, LockRange::Mode::kExclusive);
@@ -304,8 +232,6 @@ TEST_F(LockRangeTest, TryLockForTimesOutUnderContention) {
   EXPECT_GE(elapsed, 40ms);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, TryLockForSucceedsWhenHolderReleasesInTime) {
   auto holder = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
 
@@ -321,10 +247,6 @@ TEST_F(LockRangeTest, TryLockForSucceedsWhenHolderReleasesInTime) {
   EXPECT_TRUE(g.Valid());
   EXPECT_EQ(s, LockRange::Status::kAcquired);
 }
-
-// ===========================================================================
-// Blocking / threading contention tests
-// ===========================================================================
 
 TEST_F(LockRangeTest, ExclusiveBlocksSharedUntilReleased) {
   atomic<bool> shared_acquired{false};
@@ -343,8 +265,6 @@ TEST_F(LockRangeTest, ExclusiveBlocksSharedUntilReleased) {
   t.join();
   EXPECT_TRUE(shared_acquired.load(memory_order_acquire));
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, AllSharedsMustReleaseBeforeExclusiveGranted) {
   atomic<bool> excl_acquired{false};
@@ -369,8 +289,6 @@ TEST_F(LockRangeTest, AllSharedsMustReleaseBeforeExclusiveGranted) {
   EXPECT_TRUE(excl_acquired.load(memory_order_acquire));
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeTest, ConcurrentNonOverlappingExclusiveLocks) {
   constexpr int kThreads = 8;
   atomic<int> ready{0};
@@ -394,8 +312,6 @@ TEST_F(LockRangeTest, ConcurrentNonOverlappingExclusiveLocks) {
     t.join();
   EXPECT_EQ(done.load(), kThreads);
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeTest, HighConcurrencyExclusiveContentionNeverOverlaps) {
   // Many threads competing for the same exclusive range.
@@ -425,10 +341,6 @@ TEST_F(LockRangeTest, HighConcurrencyExclusiveContentionNeverOverlaps) {
   EXPECT_FALSE(violation.load());
   EXPECT_EQ(lr_.ActiveLockCount(), 0u);
 }
-
-// ===========================================================================
-// Writer-preference tests
-// ===========================================================================
 
 TEST_F(LockRangeTest, WriterPreventsFurtherReadersFromJumpingAhead) {
   // Sequence:
@@ -471,16 +383,10 @@ TEST_F(LockRangeTest, WriterPreventsFurtherReadersFromJumpingAhead) {
   EXPECT_EQ(acquisitions.load(), 111);
 }
 
-// ===========================================================================
-// Upgrade fixture and tests
-// ===========================================================================
-
 class LockRangeUpgradeTest : public ::testing::Test {
 protected:
   LockRange lr_;
 };
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeUpgradeTest, SoleSharedUpgradesToExclusive) {
   auto g = lr_.Lock(0, 100, LockRange::Mode::kShared);
@@ -492,8 +398,6 @@ TEST_F(LockRangeUpgradeTest, SoleSharedUpgradesToExclusive) {
   EXPECT_EQ(g.mode(), LockRange::Mode::kExclusive);
   EXPECT_EQ(lr_.ActiveLockCount(), 1u);
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeUpgradeTest, UpgradeBlocksWhileOtherSharedOutstanding) {
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kShared);
@@ -515,8 +419,6 @@ TEST_F(LockRangeUpgradeTest, UpgradeBlocksWhileOtherSharedOutstanding) {
   EXPECT_EQ(g1.mode(), LockRange::Mode::kExclusive);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeUpgradeTest, UpgradeForSucceedsWhenPeerReleasesInTime) {
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kShared);
   auto g2 = lr_.Lock(0, 100, LockRange::Mode::kShared);
@@ -534,8 +436,6 @@ TEST_F(LockRangeUpgradeTest, UpgradeForSucceedsWhenPeerReleasesInTime) {
   EXPECT_EQ(g1.mode(), LockRange::Mode::kExclusive);
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeUpgradeTest, UpgradeForTimesOutAndInvalidatesGuard) {
   auto g1 = lr_.Lock(0, 100, LockRange::Mode::kShared);
   auto g2 = lr_.Lock(0, 100, LockRange::Mode::kShared);
@@ -549,53 +449,40 @@ TEST_F(LockRangeUpgradeTest, UpgradeForTimesOutAndInvalidatesGuard) {
   EXPECT_TRUE(g2.Valid());
 }
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeUpgradeTest, UpgradeOnInvalidGuardThrows) {
   LockRange::Guard g;
-  EXPECT_THROW(g.Upgrade(), logic_error);
+  EXPECT_DEATH(g.Upgrade(), "Guard is not valid");
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeUpgradeTest, UpgradeOnAlreadyExclusiveGuardThrows) {
   auto g = lr_.Lock(0, 100, LockRange::Mode::kExclusive);
-  EXPECT_THROW(g.Upgrade(), logic_error);
+  EXPECT_DEATH(g.Upgrade(), "Guard is already exclusive");
 }
-
-// ===========================================================================
-// Input validation tests
-// ===========================================================================
 
 class LockRangeValidationTest : public ::testing::Test {
 protected:
   LockRange lr_;
 };
 
-//------------------------------------------------------------------------
-
 TEST_F(LockRangeValidationTest, ZeroLengthLockThrowsInvalidArgument) {
-  EXPECT_THROW(lr_.Lock(0, 0, LockRange::Mode::kExclusive), invalid_argument);
+  EXPECT_DEATH(lr_.Lock(0, 0, LockRange::Mode::kExclusive),
+               "length must be > 0");
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeValidationTest, ZeroLengthTryLockThrowsInvalidArgument) {
-  EXPECT_THROW(lr_.TryLock(0, 0, LockRange::Mode::kExclusive),
-               invalid_argument);
+  EXPECT_DEATH(lr_.TryLock(0, 0, LockRange::Mode::kExclusive),
+               "length must be > 0");
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeValidationTest, ZeroLengthTryLockForThrowsInvalidArgument) {
-  EXPECT_THROW(lr_.TryLockFor(0, 0, LockRange::Mode::kExclusive, 10ms),
-               invalid_argument);
+  EXPECT_DEATH(lr_.TryLockFor(0, 0, LockRange::Mode::kExclusive, 10ms),
+               "length must be > 0");
 }
-
-//------------------------------------------------------------------------
 
 TEST_F(LockRangeValidationTest, OverflowingRangeThrowsOverflowError) {
   constexpr uint64_t kMax = numeric_limits<uint64_t>::max();
-  EXPECT_THROW(lr_.Lock(kMax, 1, LockRange::Mode::kExclusive), overflow_error);
-  EXPECT_THROW(lr_.Lock(1, kMax, LockRange::Mode::kExclusive), overflow_error);
+  EXPECT_DEATH(lr_.Lock(kMax, 1, LockRange::Mode::kExclusive),
+               "overflows uint64_t");
+  EXPECT_DEATH(lr_.Lock(1, kMax, LockRange::Mode::kExclusive),
+               "overflows uint64_t");
 }

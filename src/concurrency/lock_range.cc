@@ -1,5 +1,7 @@
 #include "lock_range.h"
 
+#include "logging/logger.h"
+
 #include <algorithm>
 #include <cassert>
 #include <limits>
@@ -9,44 +11,35 @@ using namespace std;
 
 namespace utils {
 namespace concurrency {
-// ===========================================================================
-// Anonymous-namespace helpers
-// ===========================================================================
+
+// ---------------------------------------------------------------------------
 
 namespace {
 
-// A sentinel representing "no deadline" (block indefinitely).
 constexpr chrono::steady_clock::time_point kForever =
-    chrono::steady_clock::time_point::max();
+  chrono::steady_clock::time_point::max();
 
-// Validate that offset + length does not overflow uint64_t and that length > 0.
 void ValidateRange(uint64_t offset, uint64_t length, const char *caller) {
-  if (length == 0) {
-    throw invalid_argument(string(caller) + ": length must be > 0");
-  }
-  if (offset > numeric_limits<uint64_t>::max() - length) {
-    throw overflow_error(string(caller) +
-                         ": offset + length overflows uint64_t");
-  }
+  CHECK_NE(length, 0) << string(caller) + ": length must be > 0";
+  CHECK_LE(offset, numeric_limits<uint64_t>::max() - length)
+    << string(caller) + ": offset + length overflows uint64_t";
 }
 
 } // namespace
 
-// ===========================================================================
-// LockRange::Guard
-// ===========================================================================
+// ---------------------------------------------------------------------------
 
 LockRange::Guard::~Guard() { Release(); }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 LockRange::Guard::Guard(Guard &&other)
-    : owner_(other.owner_), offset_(other.offset_), length_(other.length_),
-      mode_(other.mode_) {
+  : owner_(other.owner_), offset_(other.offset_), length_(other.length_),
+    mode_(other.mode_) {
   other.owner_ = nullptr;
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 LockRange::Guard &LockRange::Guard::operator=(Guard &&other) {
   if (this != &other) {
@@ -60,33 +53,33 @@ LockRange::Guard &LockRange::Guard::operator=(Guard &&other) {
   return *this;
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void LockRange::Guard::Release() {
   if (owner_ == nullptr)
     return;
   LockRange *owner = owner_;
-  owner_ = nullptr; // clear first so ~Guard() re-entrance is harmless
+  // Clear first so that ~Guard() re-entrance is harmless.
+  owner_ = nullptr;
   owner->DoRelease(offset_, length_, mode_);
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void LockRange::Guard::Upgrade() {
   Status s = UpgradeUntil(kForever);
-  (void)s; // kForever guarantees kAcquired (or throws on logic errors).
+  CHECK_EQ(s, Status::kAcquired)
+    << "UpgradeUntil with kForever should only return kAcquired";
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 LockRange::Status
 LockRange::Guard::UpgradeUntil(chrono::steady_clock::time_point deadline) {
-  if (owner_ == nullptr) {
-    throw logic_error("LockRange::Guard::UpgradeUntil: guard is not valid");
-  }
+  CHECK(owner_) << "Guard is not valid";
   if (mode_ == Mode::kExclusive) {
-    throw logic_error(
-        "LockRange::Guard::UpgradeUntil: guard is already exclusive");
+    LOG(WARNING) << "Guard is already exclusive; Upgrade is a no-op";
+    return Status::kInvalid;
   }
 
   // Strategy:
@@ -129,56 +122,45 @@ LockRange::Guard::UpgradeUntil(chrono::steady_clock::time_point deadline) {
   }
 
   if (!released) {
-    // Entry not found.  The guard is already in an inconsistent state.
+    // Entry not found. The guard is already in an inconsistent state.
     owner_ = nullptr;
-    throw logic_error(
-        "LockRange::Guard::UpgradeUntil: could not find own lock entry");
+    LOG(FATAL) << "Could not find own lock entry";
   }
 
   // Step 2–3: wait for exclusive acquisition.
-  Status s = owner->WaitLoop(lk, off, end, Mode::kExclusive, deadline,
-                             /*no_wait=*/false, /*exclude_key=*/nullptr);
+  Status s = owner->WaitLoop(lk, off, end, Mode::kExclusive, deadline, false);
 
   lk.unlock();
 
   if (s == Status::kAcquired) {
     mode_ = Mode::kExclusive;
   } else {
-    // Timeout: guard is now invalid (we released the shared lock but could
+    // Timeout, guard is now invalid (we released the shared lock but could
     // not re-acquire as exclusive).
     owner_ = nullptr;
   }
   return s;
 }
 
-// ===========================================================================
-// LockRange — constructor / destructor
-// ===========================================================================
-
-LockRange::LockRange() = default;
-
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 LockRange::~LockRange() {
-  // All guards must have been destroyed before the LockRange itself.
-  assert(entries_.empty() && "LockRange destroyed while locks are still held");
+  CHECK(entries_.empty()) << "LockRange destroyed while locks are still held";
 }
 
-// ===========================================================================
-// LockRange — public acquisition API
-// ===========================================================================
+// ---------------------------------------------------------------------------
 
 LockRange::Guard LockRange::Lock(uint64_t offset, uint64_t length, Mode mode) {
   ValidateRange(offset, length, "LockRange::Lock");
 
   unique_lock<mutex> lk(mu_);
-  Status s = WaitLoop(lk, offset, offset + length, mode, kForever,
-                      /*no_wait=*/false);
-  (void)s; // kForever always yields kAcquired.
+  Status s = WaitLoop(lk, offset, offset + length, mode, kForever, false);
+  CHECK_EQ(s, Status::kAcquired)
+    << "WaitLoop with kForever should only return kAcquired";
   return Guard(this, offset, length, mode);
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 LockRange::Guard
 LockRange::TryLockUntil(uint64_t offset, uint64_t length, Mode mode,
@@ -187,8 +169,7 @@ LockRange::TryLockUntil(uint64_t offset, uint64_t length, Mode mode,
   ValidateRange(offset, length, "LockRange::TryLockUntil");
 
   unique_lock<mutex> lk(mu_);
-  Status s = WaitLoop(lk, offset, offset + length, mode, deadline,
-                      /*no_wait=*/false);
+  Status s = WaitLoop(lk, offset, offset + length, mode, deadline, false);
 
   if (status_out)
     *status_out = s;
@@ -198,7 +179,7 @@ LockRange::TryLockUntil(uint64_t offset, uint64_t length, Mode mode,
   return Guard{};
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 LockRange::Guard LockRange::TryLock(uint64_t offset, uint64_t length, Mode mode,
                                     Status *status_out) {
@@ -206,8 +187,7 @@ LockRange::Guard LockRange::TryLock(uint64_t offset, uint64_t length, Mode mode,
 
   unique_lock<mutex> lk(mu_);
   Status s = WaitLoop(lk, offset, offset + length, mode,
-                      /*deadline=*/chrono::steady_clock::time_point{},
-                      /*no_wait=*/true);
+                      chrono::steady_clock::time_point{}, true);
 
   if (status_out)
     *status_out = s;
@@ -217,16 +197,14 @@ LockRange::Guard LockRange::TryLock(uint64_t offset, uint64_t length, Mode mode,
   return Guard{};
 }
 
-// ===========================================================================
-// LockRange — diagnostic API
-// ===========================================================================
+// ---------------------------------------------------------------------------
 
 size_t LockRange::ActiveLockCount() const {
   unique_lock<mutex> lk(mu_);
   return entries_.size();
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 bool LockRange::IsLockedAny(uint64_t offset, uint64_t length) const {
   if (length == 0)
@@ -235,8 +213,7 @@ bool LockRange::IsLockedAny(uint64_t offset, uint64_t length) const {
 
   unique_lock<mutex> lk(mu_);
   for (const auto &[key, entry] : entries_) {
-    // Entries are sorted by offset; once key.offset >= end there can be
-    // no further overlap.
+    // keys are sorted by offset; maybe prune early.
     if (key.offset >= end)
       break;
     if (Overlaps(entry.offset, entry.end, offset, end))
@@ -245,23 +222,20 @@ bool LockRange::IsLockedAny(uint64_t offset, uint64_t length) const {
   return false;
 }
 
-// ===========================================================================
-// LockRange — private helpers
-// ===========================================================================
+// ---------------------------------------------------------------------------
 
-/* static */
 bool LockRange::Overlaps(uint64_t a_off, uint64_t a_end, uint64_t b_off,
                          uint64_t b_end) {
   return a_off < b_end && b_off < a_end;
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 bool LockRange::HasConflict(uint64_t offset, uint64_t end, Mode mode,
                             const EntryKey *exclude_key) const {
   // Scan entries that could overlap [offset, end).
-  // Stop as soon as the entry's starting offset is at or beyond `end`.
   for (const auto &[key, entry] : entries_) {
+    // keys are sorted by offset; maybe prune early.
     if (key.offset >= end)
       break;
     if (exclude_key && key.offset == exclude_key->offset &&
@@ -273,7 +247,7 @@ bool LockRange::HasConflict(uint64_t offset, uint64_t end, Mode mode,
 
     // Conflict matrix:
     //   request\existing  Shared    Exclusive
-    //   Shared            no        YES
+    //   Shared            NO        YES
     //   Exclusive         YES       YES
     if (mode == Mode::kExclusive || entry.mode == Mode::kExclusive) {
       return true;
@@ -282,7 +256,7 @@ bool LockRange::HasConflict(uint64_t offset, uint64_t end, Mode mode,
   return false;
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 bool LockRange::ExclusiveWaiterExists(uint64_t offset, uint64_t end) const {
   for (const Waiter *w : waiters_) {
@@ -294,11 +268,11 @@ bool LockRange::ExclusiveWaiterExists(uint64_t offset, uint64_t end) const {
   return false;
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 bool LockRange::CanGrant(uint64_t offset, uint64_t end, Mode mode,
                          const EntryKey *exclude_key) const {
-  // Writer-preference: if we are a shared-lock request and an exclusive
+  // Writer preference: if we are a shared lock request and an exclusive
   // waiter is already queued for an overlapping range, we yield to avoid
   // starving writers.
   if (mode == Mode::kShared && ExclusiveWaiterExists(offset, end)) {
@@ -307,7 +281,7 @@ bool LockRange::CanGrant(uint64_t offset, uint64_t end, Mode mode,
   return !HasConflict(offset, end, mode, exclude_key);
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 LockRange::EntryKey LockRange::InsertEntry(uint64_t offset, uint64_t end,
                                            Mode mode) {
@@ -320,21 +294,21 @@ LockRange::EntryKey LockRange::InsertEntry(uint64_t offset, uint64_t end,
   return key;
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void LockRange::RemoveEntry(const EntryKey &key) {
   entries_.erase(key);
   cv_.notify_all();
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 LockRange::Status LockRange::WaitLoop(unique_lock<mutex> &lk, uint64_t offset,
                                       uint64_t end, Mode mode,
                                       chrono::steady_clock::time_point deadline,
                                       bool no_wait,
                                       const EntryKey *exclude_key) {
-  // Caller must hold `lk` on entry; `lk` is still held on return.
+  // Caller must hold 'lk' on entry; 'lk' is still held on return.
 
   if (CanGrant(offset, end, mode, exclude_key)) {
     InsertEntry(offset, end, mode);
@@ -375,7 +349,7 @@ LockRange::Status LockRange::WaitLoop(unique_lock<mutex> &lk, uint64_t offset,
   return result;
 }
 
-//------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void LockRange::DoRelease(uint64_t offset, uint64_t length, Mode mode) {
   uint64_t end = offset + length;
@@ -402,10 +376,9 @@ void LockRange::DoRelease(uint64_t offset, uint64_t length, Mode mode) {
     cv_.notify_all();
     return;
   }
-
-  // Entry not found.  This is a benign race (e.g., the guard was moved from
-  // and the source was default-initialized).  We silently ignore it.
 }
+
+// ---------------------------------------------------------------------------
 
 } // namespace concurrency
 } // namespace utils

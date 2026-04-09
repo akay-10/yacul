@@ -25,3 +25,10 @@ target_include_directories(os_lockless_queue_test
                            PRIVATE ${CMAKE_SOURCE_DIR}/src/concurrency)
 
 target_link_libraries(os_lockless_queue_test GTest::gtest_main)
+
+add_executable(spinlock_test spinlock_test.cc)
+
+target_include_directories(spinlock_test
+                           PRIVATE ${CMAKE_SOURCE_DIR}/src/concurrency)
+
+target_link_libraries(spinlock_test libconcurrency GTest::gtest_main)

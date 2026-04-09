@@ -1,4 +1,5 @@
 #include "os_murmur_hash3.h"
+
 #include "gtest/gtest.h"
 
 TEST(OSUsageTest, MurmuruHash3Test) {

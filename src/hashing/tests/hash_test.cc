@@ -1,4 +1,5 @@
 #include "hash.h"
+
 #include "gtest/gtest.h"
 
 using namespace utils::hashing;
@@ -11,9 +12,9 @@ template <HashType H> struct HashTypeTag {
 
 // Define the list of types to test
 using HashTypesToTest =
-    ::testing::Types<HashTypeTag<HashType::kStdHash>,
-                     HashTypeTag<HashType::kMurmurHashx86_32>,
-                     HashTypeTag<HashType::kAbseilHash>>;
+  ::testing::Types<HashTypeTag<HashType::kStdHash>,
+                   HashTypeTag<HashType::kMurmurHashx86_32>,
+                   HashTypeTag<HashType::kAbseilHash>>;
 
 // Define the Test Fixture
 template <typename T> class HashTest : public ::testing::Test {

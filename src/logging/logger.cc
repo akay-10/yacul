@@ -1,6 +1,4 @@
-#include <csignal>
-#include <filesystem> // for filesystem
-#include <sstream>
+#include "logger.h"
 
 #include "absl/flags/parse.h"
 #include "absl/log/globals.h"
@@ -9,7 +7,10 @@
 #include "absl/log/log_sink_registry.h"
 #include "absl/strings/str_split.h"
 #include "backward.hpp"
-#include "logger.h"
+
+#include <csignal>
+#include <filesystem>
+#include <sstream>
 
 using namespace std;
 namespace fs = filesystem;
@@ -176,8 +177,7 @@ void Logger::DisableSignalHandlers() {
 //------------------------------------------------------------------------------
 
 CustomLogSink::CustomLogSink(const string &log_dir, const string &app_name)
-    : log_dir_(log_dir), app_name_(app_name),
-      skip_log_to_file_(log_dir.empty()) {
+  : log_dir_(log_dir), app_name_(app_name), skip_log_to_file_(log_dir.empty()) {
 
   if (skip_log_to_file_) {
     LOG(WARNING) << "Log directory is empty. Logs will not be written to file.";

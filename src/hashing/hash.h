@@ -74,7 +74,7 @@ private:
 
   uint32_t HashCString(const T &key, const uint32_t seed) const {
     static_assert(std::is_same_v<CleanT, const char *> ||
-                      std::is_same_v<CleanT, char *>,
+                    std::is_same_v<CleanT, char *>,
                   "Expected T to be c string");
     uint32_t hash = 0;
     if constexpr (HType == HashType::kMurmurHashx86_32) {
@@ -140,11 +140,9 @@ private:
                   "Expected T to be a std::tuple");
     uint32_t hash = seed;
     if constexpr (HType == HashType::kMurmurHashx86_32) {
-      std::apply(
-          [this, &hash](auto &&...args) {
-            ((hash = HashElement(args, hash)), ...);
-          },
-          key);
+      std::apply([this, &hash](
+                   auto &&...args) { ((hash = HashElement(args, hash)), ...); },
+                 key);
     } else if constexpr (HType == HashType::kAbseilHash) {
       hash = absl::Hash<CleanT>{}(key);
     } else {

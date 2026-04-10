@@ -1,21 +1,19 @@
+#include "buffer.h"
+
 #include <cstring>
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
 
-#include "buffer.h"
-
 using namespace std;
 using namespace utils::memory;
 
-// ===========================================================================
 // Helpers
-// ===========================================================================
 
 static string BufferStr(const Buffer &b) { return string(b.ToString()); }
 
-// Build a heap-allocated chain and return the head.
-// Caller owns the chain and must call Buffer::DestroyChain(head).
+// Build a heap-allocated chain and return the head. Caller owns the chain and
+// must call Buffer::DestroyChain(head).
 static Buffer *MakeChain(initializer_list<string> parts) {
   Buffer *head = nullptr;
   for (auto buff_str : parts) {
@@ -41,10 +39,6 @@ static string ChainToString(const Buffer *head) {
   } while (cur != head);
   return out;
 }
-
-// ===========================================================================
-// PhysicalBufferTest — white-box tests for the backing store
-// ===========================================================================
 
 TEST(PhysicalBufferTest, CreateAndCapacity) {
   PhysicalBuffer *pb = PhysicalBuffer::Create(128);
@@ -97,16 +91,12 @@ TEST(PhysicalBufferTest, ExternalMemory) {
   // Pass &freed as the "data" just to verify the free_fn is invoked.
   // In real use, ext would be the payload.
   PhysicalBuffer *pb = PhysicalBuffer::CreateExternal(
-      ext, sizeof(ext), [](void *) { /* no-op for this unit */ });
+    ext, sizeof(ext), [](void *) { /* no-op for this unit */ });
   EXPECT_EQ(pb->capacity(), 8u);
   EXPECT_EQ(pb->buffer_start(), ext);
   EXPECT_EQ(pb->ref_count(), 1u);
   pb->Release(); // should invoke free_fn (no-op here) and free header
 }
-
-// ===========================================================================
-// BufferFactoryTest — construction and factory methods
-// ===========================================================================
 
 TEST(BufferFactoryTest, CreateEmpty) {
   auto b = Buffer::Create(64);
@@ -174,10 +164,6 @@ TEST(BufferFactoryTest, DefaultConstructedBuffer) {
   EXPECT_FALSE(b.is_shared());
 }
 
-// ===========================================================================
-// BufferObserverTest — size/headroom/tailroom arithmetic
-// ===========================================================================
-
 TEST(BufferObserverTest, HeadroomAndTailroom) {
   auto b = Buffer::Create(100);
   EXPECT_EQ(b.headroom(), 0u);
@@ -201,10 +187,6 @@ TEST(BufferObserverTest, HeadroomAfterTrimStart) {
   EXPECT_EQ(b.headroom(), 3u);
   EXPECT_EQ(b.tailroom(), 0u);
 }
-
-// ===========================================================================
-// BufferCopyMoveTest — copy and move semantics
-// ===========================================================================
 
 TEST(BufferCopyMoveTest, CopySharesPhysical) {
   auto b1 = Buffer::CopyFrom("shared data");
@@ -278,10 +260,6 @@ TEST(BufferCopyMoveTest, MultipleCopiesToSamePhysical) {
   EXPECT_EQ(b1.data(), b4.data());
   EXPECT_TRUE(b1.is_shared());
 }
-
-// ===========================================================================
-// BufferMutationTest — TrimStart, TrimEnd, Prepend, Append, AppendData
-// ===========================================================================
 
 TEST(BufferMutationTest, TrimStart) {
   auto b = Buffer::CopyFrom("hello world");
@@ -388,10 +366,6 @@ TEST(BufferMutationTest, EnsureTailroomPreservesData) {
   EXPECT_GE(b.tailroom(), 500u);
 }
 
-// ===========================================================================
-// BufferSliceTest — Slice
-// ===========================================================================
-
 TEST(BufferSliceTest, SliceSharesPhysical) {
   auto b = Buffer::CopyFrom("hello world");
   auto s = b.Slice(6, 5);
@@ -446,10 +420,6 @@ TEST(BufferSliceTest, SliceAtBoundary) {
   EXPECT_EQ(s.size(), 0u);
 }
 
-// ===========================================================================
-// BufferCloneTest — Clone (copy-on-write materialisation)
-// ===========================================================================
-
 TEST(BufferCloneTest, CloneIsIndependent) {
   auto b1 = Buffer::CopyFrom("original");
   auto b2 = b1.Clone();
@@ -481,10 +451,6 @@ TEST(BufferCloneTest, ClonePreservesSize) {
   auto b2 = b1.Clone();
   EXPECT_EQ(b1.size(), b2.size());
 }
-
-// ===========================================================================
-// CopyOnWriteTest — CoW semantics on mutation
-// ===========================================================================
 
 TEST(CopyOnWriteTest, WritableDataDetachesOnShared) {
   auto b1 = Buffer::CopyFrom("shared");
@@ -568,10 +534,6 @@ TEST(CopyOnWriteTest, ThreeWaySharing) {
   EXPECT_EQ(BufferStr(b2), "Ybc");
 }
 
-// ===========================================================================
-// BufferComparisonTest — operator== / operator!=
-// ===========================================================================
-
 TEST(BufferComparisonTest, EqualContent) {
   auto b1 = Buffer::CopyFrom("same");
   auto b2 = Buffer::CopyFrom("same");
@@ -608,10 +570,6 @@ TEST(BufferComparisonTest, EmptyVsNonEmpty) {
   auto b2 = Buffer::CopyFrom("x");
   EXPECT_TRUE(b1 != b2);
 }
-
-// ===========================================================================
-// BufferChainTest — ring operations
-// ===========================================================================
 
 TEST(BufferChainTest, StandaloneIsNotChained) {
   auto b = Buffer::CopyFrom("solo");
@@ -829,10 +787,6 @@ TEST(BufferChainTest, ChainWithEmptyNodes) {
   Buffer::DestroyChain(a);
 }
 
-// ===========================================================================
-// BufferCursorTest — BufferCursor read-only traversal
-// ===========================================================================
-
 TEST(BufferCursorTest, ReadSingleNode) {
   auto b = Buffer::CopyFrom("hello");
   BufferCursor cursor(&b);
@@ -986,10 +940,6 @@ TEST(BufferCursorTest, ReadSingleByteAtATime) {
   Buffer::DestroyChain(head);
 }
 
-// ===========================================================================
-// BufferRWCursorTest — BufferRWCursor write traversal
-// ===========================================================================
-
 TEST(BufferRWCursorTest, WriteSingleNode) {
   auto *a = new Buffer(Buffer::CopyFrom("hello"));
   BufferRWCursor rw(a);
@@ -1076,10 +1026,6 @@ TEST(BufferRWCursorTest, TotalLengthMatchesCursor) {
   EXPECT_EQ(rw.TotalLength(), 2u);
   Buffer::DestroyChain(head);
 }
-
-// ===========================================================================
-// BufferEdgeCaseTest — edge cases and robustness
-// ===========================================================================
 
 TEST(BufferEdgeCaseTest, ZeroCapacityCreate) {
   EXPECT_NO_FATAL_FAILURE({

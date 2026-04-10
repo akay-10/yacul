@@ -54,7 +54,7 @@ Buffer::~Buffer() {
 //------------------------------------------------------------------------------
 
 Buffer::Buffer(const Buffer &rhs)
-    : physical_(rhs.physical_), data_(rhs.data_), length_(rhs.length_) {
+  : physical_(rhs.physical_), data_(rhs.data_), length_(rhs.length_) {
   if (physical_)
     physical_->Retain();
   MakeSelfRing();
@@ -79,7 +79,7 @@ Buffer &Buffer::operator=(const Buffer &rhs) {
 //------------------------------------------------------------------------------
 
 Buffer::Buffer(Buffer &&rhs)
-    : physical_(rhs.physical_), data_(rhs.data_), length_(rhs.length_) {
+  : physical_(rhs.physical_), data_(rhs.data_), length_(rhs.length_) {
   StealRingPosition(rhs);
   rhs.physical_ = nullptr;
   rhs.data_ = nullptr;

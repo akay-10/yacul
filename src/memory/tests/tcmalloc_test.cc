@@ -11,7 +11,7 @@ TEST(TCMaclloTest, SizeClassStats) {
   DumpSizeClassStats("Before allocaing 1k 64byte allocations");
   size_t allocated = 0;
   MallocExtension::instance()->GetNumericProperty(
-      "generic.current_allocated_bytes", &allocated);
+    "generic.current_allocated_bytes", &allocated);
 
   void *arr_p[1000];
   for (int i = 0; i < 1000; i++) {
@@ -21,7 +21,7 @@ TEST(TCMaclloTest, SizeClassStats) {
   DumpSizeClassStats("After allocating");
   size_t new_allocated = 0;
   MallocExtension::instance()->GetNumericProperty(
-      "generic.current_allocated_bytes", &new_allocated);
+    "generic.current_allocated_bytes", &new_allocated);
 
   EXPECT_EQ(64 * 1000, new_allocated - allocated);
 

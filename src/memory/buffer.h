@@ -1,15 +1,144 @@
 #ifndef UTILS_MEMORY_BUFFER_H
 #define UTILS_MEMORY_BUFFER_H
 
+#include "basic/basic.h"
+#include "logging/logger.h"
+
 #include <atomic> // atomic
 #include <memory> // shared_ptr
 #include <vector> // vector
 
-#include "basic/basic.h"
-#include "logging/logger.h"
-
 namespace utils {
 namespace memory {
+
+/*
+ * Buffer is a smart buffer class supporting:
+ *   - Copy-on-Write (CoW) for efficient sharing
+ *   - Chaining (doubly-linked circular ring)
+ *   - Slicing and cloning
+ *   - External memory wrapping
+ *
+ * DESIGN:
+ *
+ *   PhysicalBuffer (refcounted backing store):
+ *   +------------------------+
+ *   | ref_count | capacity   |  <-- header (one malloc)
+ *   +------------------------+
+ *   | .... data bytes ....   |  <-- capacity bytes
+ *   +------------------------+
+ *
+ *   Buffer (logical view on PhysicalBuffer):
+ *   +----------------------+
+ *   | PhysicalBuffer*     | ----> (shared, refcounted)
+ *   | data ptr            | ----> points into PhysicalBuffer
+ *   | length              |
+ *   | next_ | prev_       | ----> ring links
+ *   +----------------------+
+ *
+ *   Chain (doubly-linked circular ring):
+ *   +-------+     +-------+     +-------+
+ *   |   A   | <-> |   B   | <-> |   C   |
+ *   +-------+     +-------+     +-------+
+ *     ^                               |
+ *     +---------------circular--------+
+ *
+ *   Slice (shares PhysicalBuffer, O(1)):
+ *   Original: [|----data----|----length----|-----capacity-----]
+ *   Slice:               [|--offset--|--len--]
+ *
+ * PHYSICALBUFFER (reference-counted backing store):
+ *   - Create(capacity): allocates header + data in one malloc
+ *   - CreateExternal(): wraps external memory with custom free function
+ *   - Retain()/Release(): atomic refcounting
+ *   - is_shared(): true if refcount > 1
+ *
+ * BUFFER (logical view):
+ *   - Create(capacity): new buffer with fresh PhysicalBuffer
+ *   - CopyFrom(src, len): copy external data
+ *   - WrapExternal(data, len, free_fn): wrap existing memory
+ *
+ *   Observers:
+ *     - data(), size(), empty()
+ *     - headroom() / tailroom() (unused space at ends)
+ *     - capacity() (total physical buffer size)
+ *     - is_shared() (if backed by shared PhysicalBuffer)
+ *
+ *   Chain operations:
+ *     - is_chained() / next() / prev()
+ *     - AppendChain(other): append other's ring to this
+ *     - PrependChain(other): prepend other's ring before this
+ *     - Unlink(): detach from ring, make standalone
+ *     - SplitChainAfter(): divide ring into two
+ *     - CoalesceChain(): merge chain into single Buffer
+ *     - DestroyChain(head): destroy entire ring
+ *
+ *   Mutation:
+ *     - writable_data(): triggers CoW if shared
+ *     - TrimStart(n) / TrimEnd(n): shrink logical view
+ *     - Prepend(n): expose headroom into logical view
+ *     - Append(n): expose tailroom into logical view
+ *     - AppendData(src, n): append raw bytes
+ *     - EnsureTailroom(n): grow capacity if needed
+ *     - Reserve(new_cap): ensure minimum capacity
+ *     - Slice(offset, len): O(1) slice (shares storage)
+ *     - Clone(): O(n) independent copy
+ *
+ * BUFFERCURSOR (read-only):
+ *   - Walks transparently across a chain of Buffers
+ *   - TotalLength(): total bytes remaining in chain
+ *   - AtEnd(): cursor at the end of chain?
+ *   - Read(dest, len): read and advance
+ *   - Skip(len): advance cursor
+ *   - Peek(dest, len): read without advancing
+ *   - Reset(): go back to beginning
+ *
+ * BUFFERRWCURSOR (read-write):
+ *   - Same as BufferCursor but writes trigger CoW
+ *   - Write(src, len): write and advance
+ *   - Skip(len): advance cursor
+ *   - Reset(): go back to beginning
+ *
+ * USAGE EXAMPLES:
+ *
+ *   1. Simple buffer:
+ *      auto buf = Buffer::Create(1024);
+ *      buf->AppendData("hello", 5);
+ *
+ *   2. Wrap external memory:
+ *      auto buf = Buffer::WrapExternal(mydata, mysize, free_fn);
+ *
+ *   3. Chain buffers:
+ *      Buffer a = Buffer::Create(100);
+ *      Buffer b = Buffer::Create(100);
+ *      a.AppendChain(&b);  // a's ring now includes b
+ *
+ *   4. Slice (O(1), shares storage):
+ *      Buffer slice = buf.Slice(10, 20);
+ *
+ *   5. Clone (O(n), independent copy):
+ *      Buffer copy = buf.Clone();
+ *
+ *   6. Read across chain:
+ *      BufferCursor cursor(&head);
+ *      cursor.Read(buffer, 100);
+ *
+ *   7. Write across chain:
+ *      BufferRWCursor writer(&head);
+ *      writer.Write(data, len);
+ *
+ * IMPORTANT NOTES:
+ *   - Buffer uses CoW: writable_data() may copy if refcount > 1
+ *   - Chains are circular rings: next() wraps around
+ *   - DestroyChain() is the only safe way to delete a chain
+ *   - Slice shares PhysicalBuffer: modifications affect original
+ *   - Clone creates independent copy
+ *   - headroom/tailroom allow zero-copy prepend/append
+ *
+ * THREAD SAFETY:
+ *   - PhysicalBuffer refcounting is thread-safe
+ *   - Buffer mutation is NOT thread-safe (external sync required)
+ *
+ */
 
 // Forward declarations
 class Buffer;
@@ -37,8 +166,8 @@ public:
     void *raw = std::malloc(sizeof(PhysicalBuffer));
     CHECK(raw) << "Buffer: malloc failed for "
                << LOGVARS(sizeof(PhysicalBuffer));
-    return ::new (raw) PhysicalBuffer(static_cast<uint8_t *>(external_data),
-                                      capacity, free_fn);
+    return ::new (raw)
+      PhysicalBuffer(static_cast<uint8_t *>(external_data), capacity, free_fn);
   }
 
   void Retain() { ref_count_.fetch_add(1, std::memory_order_relaxed); }
@@ -73,13 +202,13 @@ private:
   static constexpr uint32_t kFlagExternal = 1U << 0;
 
   explicit PhysicalBuffer(std::size_t capacity)
-      : ref_count_(1), capacity_(capacity), flags_(0), external_data_(nullptr),
-        free_fn_(nullptr) {}
+    : ref_count_(1), capacity_(capacity), flags_(0), external_data_(nullptr),
+      free_fn_(nullptr) {}
 
   PhysicalBuffer(uint8_t *external_data, std::size_t capacity,
                  void (*free_fn)(void *))
-      : ref_count_(1), capacity_(capacity), flags_(kFlagExternal),
-        external_data_(external_data), free_fn_(free_fn) {}
+    : ref_count_(1), capacity_(capacity), flags_(kFlagExternal),
+      external_data_(external_data), free_fn_(free_fn) {}
 
   ~PhysicalBuffer() = default;
 
@@ -346,7 +475,7 @@ private:
 class BufferCursor {
 public:
   explicit BufferCursor(const Buffer *head)
-      : head_(head), current_(head), offset_(0) {}
+    : head_(head), current_(head), offset_(0) {}
 
   // Bytes remaining in the entire chain from current position.
   std::size_t TotalLength() const;
@@ -379,7 +508,7 @@ private:
 class BufferRWCursor {
 public:
   explicit BufferRWCursor(Buffer *head)
-      : head_(head), current_(head), offset_(0) {}
+    : head_(head), current_(head), offset_(0) {}
 
   std::size_t TotalLength() const;
 

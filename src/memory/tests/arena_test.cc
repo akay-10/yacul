@@ -1,7 +1,7 @@
-#include <gtest/gtest.h>
-
 #include "allocator.h"
 #include "arena.h"
+
+#include <gtest/gtest.h>
 
 using namespace std;
 using namespace utils::memory;

@@ -6,16 +6,18 @@
 namespace utils {
 namespace memory {
 
-// STL-compatible allocator that draws from a shared Arena.
-// Suitable for std::vector, std::string, std::unordered_map, etc.
-//
-// IMPORTANT: deallocate() is a no-op. Memory is reclaimed only when the arena
-// resets or is destroyed.
-//
-// Example:
-//   mem::Arena arena;
-//   using IntVec = std::vector<int, mem::ArenaAllocator<int>>;
-//   IntVec v(mem::ArenaAllocator<int>{arena});
+/*
+ * STL-compatible allocator that draws from a shared Arena.
+ * Suitable for std::vector, std::string, std::unordered_map, etc.
+ *
+ * IMPORTANT: deallocate() is a no-op. Memory is reclaimed only when the arena
+ * resets or is destroyed.
+ *
+ * Example:
+ *   mem::Arena arena;
+ *   using IntVec = std::vector<int, mem::ArenaAllocator<int>>;
+ *   IntVec v(mem::ArenaAllocator<int>{arena});
+ */
 template <typename T> class ArenaAllocator {
 public:
   using value_type = T;

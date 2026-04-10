@@ -8,8 +8,8 @@ namespace memory {
 //------------------------------------------------------------------------------
 
 Arena::Arena(size_t initial_size)
-    : current_(nullptr), initial_block_size_(0U), block_growth_factor_(2U),
-      total_allocated_(0U), total_wasted_(0U) {
+  : current_(nullptr), initial_block_size_(0U), block_growth_factor_(2U),
+    total_allocated_(0U), total_wasted_(0U) {
 
   CHECK_GT(initial_size, 0U) << "Arena: initial block size must be > 0";
   initial_block_size_ = max(initial_size, sizeof(Block) * 2U);
@@ -19,10 +19,10 @@ Arena::Arena(size_t initial_size)
 //------------------------------------------------------------------------------
 
 Arena::Arena(Arena &&other)
-    : current_(other.current_), initial_block_size_(other.initial_block_size_),
-      block_growth_factor_(other.block_growth_factor_),
-      total_allocated_(other.total_allocated_),
-      total_wasted_(other.total_wasted_) {
+  : current_(other.current_), initial_block_size_(other.initial_block_size_),
+    block_growth_factor_(other.block_growth_factor_),
+    total_allocated_(other.total_allocated_),
+    total_wasted_(other.total_wasted_) {
 
   other.current_ = nullptr;
 }
@@ -62,7 +62,7 @@ void *Arena::AllocBytes(size_t size, size_t align) {
   // Grow the arena and new block must fit at least 'size' bytes plus
   // header/alignment overhead.
   const size_t header_size =
-      detail::AlignUp(sizeof(Block), alignof(max_align_t));
+    detail::AlignUp(sizeof(Block), alignof(max_align_t));
   size_t new_cap = max(current_->capacity * block_growth_factor_,
                        detail::AlignUp(size + header_size, align) + align);
 
@@ -120,7 +120,7 @@ Block *Arena::MakeBlock(size_t minimum_capacity) {
   // Write the original malloc pointer into the AllocHeader slot that sits
   // exactly 'overhead' bytes before the Block.
   auto *hdr = reinterpret_cast<detail::AllocHeader *>(
-      block_ptr - sizeof(detail::AllocHeader));
+    block_ptr - sizeof(detail::AllocHeader));
   hdr->malloc_ptr = raw;
 
   Block *blk = new (block_ptr) Block{};
@@ -161,7 +161,7 @@ void Arena::RewindTo(Block *mark_block, size_t mark_used) {
 //------------------------------------------------------------------------------
 
 ArenaMark::ArenaMark(Arena *arena, Block *block, size_t used)
-    : arena_(arena), block_(block), used_(used), valid_(true) {}
+  : arena_(arena), block_(block), used_(used), valid_(true) {}
 
 //------------------------------------------------------------------------------
 
@@ -173,7 +173,7 @@ ArenaMark::~ArenaMark() {
 //------------------------------------------------------------------------------
 
 ArenaMark::ArenaMark(ArenaMark &&o)
-    : arena_(o.arena_), block_(o.block_), used_(o.used_), valid_(o.valid_) {
+  : arena_(o.arena_), block_(o.block_), used_(o.used_), valid_(o.valid_) {
   o.valid_ = false;
 }
 

@@ -1,13 +1,72 @@
 #ifndef UTILS_MEMORY_ARENA_H
 #define UTILS_MEMORY_ARENA_H
 
-#include <memory> // shared_ptr
-
 #include "basic/basic.h"
 #include "logging/logger.h"
 
+#include <memory>
+
 namespace utils {
 namespace memory {
+
+/*
+ * Arena is a fast memory allocator optimized for bulk allocations. It allocates
+ * memory in large blocks and doles out pieces incrementally, avoiding
+ * per-allocation overhead.
+ *
+ * USAGE:
+ *
+ *   1. Create an arena (default 64KB initial block):
+ *      auto arena = std::make_shared<Arena>();
+ *      auto arena = std::make_shared<Arena>(1024 * 1024);  // 1MB initial
+ *
+ *   2. Allocate raw bytes:
+ *      void *mem = arena->AllocBytes(256, alignof(double));
+ *
+ *   3. Allocate a typed object:
+ *      MyStruct *obj = arena->Alloc<MyStruct>(arg1, arg2);
+ *      // Object constructed in-place, destructor NOT called automatically
+ *
+ *   4. Allocate an array:
+ *      int *arr = arena->AllocArray<int>(100);
+ *
+ *   5. Reset (free all memory at once):
+ *      arena->Reset();  // Fast deallocation - just resets pointers
+ *
+ *   6. Mark/Rewind (temporary allocations):
+ *      {
+ *        auto mark = arena->Mark();
+ *        // Do temporary allocations
+ *        // ... allocations here are freed when mark goes out of scope
+ *      }  // auto-rewind happens here
+ *      mark.Rewind();  // Or manually rewind early
+ *
+ * IMPORTANT NOTES:
+ *   - Destructors are NOT called automatically when Reset() is called
+ *   - For RAII cleanup with marks, manually destruct objects before rewind
+ *   - Allocations are always aligned to the requested alignment (power of 2, <=
+ * 4096)
+ *   - AlignUp uses the global ::AlignUp utility from basic.h
+ *   - Block growth factor controls how new blocks size up (default: 2x)
+ *
+ * PERFORMANCE CHARACTERISTICS:
+ *   - O(1) allocation for most cases (just bump a pointer)
+ *   - No per-allocation malloc overhead
+ *   - Memory locality: allocations are contiguous in blocks
+ *   - Reset() is O(number of blocks), typically very fast
+ *   - Wasted memory: alignment padding + partial blocks at end
+ *
+ * THREAD SAFETY:
+ *   - Arena is NOT thread-safe. Use from a single thread or protect externally.
+ *   - For thread-local arenas, create one per thread.
+ *
+ * METRICS:
+ *   - total_allocated(): Total bytes handed out to users
+ *   - total_wasted(): Bytes lost to alignment + unused block ends
+ *   - reserved_bytes(): Total memory reserved (allocated + waste)
+ *   - block_count(): Number of memory blocks allocated
+ *
+ */
 
 namespace detail {
 
@@ -18,7 +77,7 @@ inline std::size_t AlignUp(std::size_t value, std::size_t align) {
 
 inline void CheckAlignment(std::size_t align) {
   CHECK(align != 0 && IsPowerOfTwo(align) && align <= 4096U)
-      << "Arena: alignment must be a non-zero power-of-two <= 4096";
+    << "Arena: alignment must be a non-zero power-of-two <= 4096";
 }
 
 struct AllocHeader {
@@ -52,8 +111,8 @@ struct Block {
   void *TryAlloc(std::size_t size, std::size_t align) {
     std::byte *base = data() + used;
     std::size_t padding =
-        detail::AlignUp(reinterpret_cast<std::uintptr_t>(base), align) -
-        reinterpret_cast<std::uintptr_t>(base);
+      detail::AlignUp(reinterpret_cast<std::uintptr_t>(base), align) -
+      reinterpret_cast<std::uintptr_t>(base);
     std::size_t total = padding + size;
     if (total > remaining())
       return nullptr;
@@ -124,7 +183,7 @@ public:
     static_assert(alignof(T) <= 4096U, "Arena: alignment exceeds maximum");
 
     constexpr std::size_t max_count =
-        std::numeric_limits<std::size_t>::max() / sizeof(T);
+      std::numeric_limits<std::size_t>::max() / sizeof(T);
     CHECK(count <= max_count) << "Arena: bad allocation";
 
     return static_cast<T *>(AllocBytes(sizeof(T) * count, alignof(T)));

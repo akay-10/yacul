@@ -1,11 +1,21 @@
 #include "system_info.h"
+#include "popen_wrapper.h"
 
+#include <algorithm>
 #include <arpa/inet.h>
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
 #include <dirent.h>
+#include <fstream>
 #include <ifaddrs.h>
+#include <iomanip>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <pwd.h>
+#include <set>
+#include <sstream>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -13,34 +23,18 @@
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <unistd.h>
-#include <utmp.h>
-
-#include <algorithm>
-#include <cassert>
-#include <cerrno>
-#include <cmath>
-#include <cstdio>
-#include <cstring>
-#include <ctime>
-#include <fstream>
-#include <iomanip>
-#include <set>
-#include <sstream>
-#include <stdexcept>
-#include <system_error>
 #include <utility>
+#include <utmp.h>
 
 using namespace std;
 
-// POSIX: environment pointer, declared at global scope to avoid
-// linker errors that arise from declaring it inside a namespace.
+// POSIX: environment pointer, declared at global scope to avoid linker errors
+// that arise from declaring it inside a namespace.
 extern char **environ; // NOLINT(readability-redundant-declaration)
 
 namespace utils {
 namespace system {
 
-// ---------------------------------------------------------------------------
-// CpuCoreStats helpers
 // ---------------------------------------------------------------------------
 
 uint64_t SystemInfo::CpuCoreStats::Total() const {
@@ -73,8 +67,6 @@ double SystemInfo::CpuCoreStats::UsagePercent(const CpuCoreStats &prev) const {
 }
 
 // ---------------------------------------------------------------------------
-// MemoryInfo derived helpers
-// ---------------------------------------------------------------------------
 
 double SystemInfo::MemoryInfo::UsedPercent() const {
   if (total == 0)
@@ -91,8 +83,6 @@ double SystemInfo::MemoryInfo::SwapUsedPercent() const {
          static_cast<double>(swap_total);
 }
 
-// ---------------------------------------------------------------------------
-// DiskPartition derived helpers
 // ---------------------------------------------------------------------------
 
 double SystemInfo::DiskPartition::UsedPercent() const {
@@ -111,15 +101,13 @@ double SystemInfo::DiskPartition::InodesUsedPercent() const {
 }
 
 // ---------------------------------------------------------------------------
-// Construction / destruction
-// ---------------------------------------------------------------------------
 
 SystemInfo::SystemInfo() : SystemInfo(Options{}) {}
 
 // ---------------------------------------------------------------------------
 
 SystemInfo::SystemInfo(Options options)
-    : impl_(make_unique<Impl>(move(options))) {
+  : impl_(make_unique<Impl>(move(options))) {
   impl_->prev_cpu_time = chrono::steady_clock::now();
   // Warm the CPU baseline immediately so the first delta is meaningful.
   impl_->prev_cpu_stats = ParseProcStat();
@@ -162,8 +150,6 @@ SystemInfo::~SystemInfo() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Cache control
 // ---------------------------------------------------------------------------
 
 void SystemInfo::InvalidateCache() {
@@ -220,8 +206,6 @@ void SystemInfo::InvalidateCache(const string &domain) {
 }
 
 // ---------------------------------------------------------------------------
-// Background refresh
-// ---------------------------------------------------------------------------
 
 void SystemInfo::StartBackgroundRefresh() {
   bool expected = false;
@@ -276,8 +260,6 @@ void SystemInfo::RefreshLoop() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Static helpers
 // ---------------------------------------------------------------------------
 
 string SystemInfo::ReadFile(const string &path) {
@@ -381,8 +363,6 @@ string SystemInfo::FormatPercent(double pct, int decimals) {
 }
 
 // ---------------------------------------------------------------------------
-// RunCommand helper
-// ---------------------------------------------------------------------------
 
 string SystemInfo::RunCommand(const vector<string> &argv) {
   PopenWrapper::Options pop_opts;
@@ -398,8 +378,6 @@ string SystemInfo::RunCommand(const vector<string> &argv) {
   return result.stdout_data;
 }
 
-// ---------------------------------------------------------------------------
-// OsInfo
 // ---------------------------------------------------------------------------
 
 SystemInfo::OsInfo SystemInfo::GetOsInfo() {
@@ -475,8 +453,6 @@ SystemInfo::OsInfo SystemInfo::FetchOsInfo() {
 }
 
 // ---------------------------------------------------------------------------
-// /proc/stat parser
-// ---------------------------------------------------------------------------
 
 vector<SystemInfo::CpuCoreStats> SystemInfo::ParseProcStat() {
   vector<CpuCoreStats> stats;
@@ -503,14 +479,12 @@ vector<SystemInfo::CpuCoreStats> SystemInfo::ParseProcStat() {
       }
     }
     ss >> c.user >> c.nice >> c.system_ticks >> c.idle >> c.iowait >> c.irq >>
-        c.softirq >> c.steal >> c.guest >> c.guest_nice;
+      c.softirq >> c.steal >> c.guest >> c.guest_nice;
     stats.push_back(c);
   }
   return stats;
 }
 
-// ---------------------------------------------------------------------------
-// CpuInfo
 // ---------------------------------------------------------------------------
 
 SystemInfo::CpuInfo SystemInfo::GetCpuInfo() {
@@ -530,7 +504,7 @@ SystemInfo::CpuInfo SystemInfo::GetCpuUsage(chrono::milliseconds interval) {
 
   lock_guard<mutex> lk(impl_->cpu_mutex);
   CpuInfo info =
-      impl_->cpu_cache.valid ? impl_->cpu_cache.value : FetchCpuInfo();
+    impl_->cpu_cache.valid ? impl_->cpu_cache.value : FetchCpuInfo();
 
   if (!before.empty() && !after.empty()) {
     info.usage_percent = after[0].UsagePercent(before[0]);
@@ -621,22 +595,22 @@ SystemInfo::CpuInfo SystemInfo::FetchCpuInfo() {
   if (info.sockets == 0)
     info.sockets = 1;
   info.hyper_threading =
-      (info.logical_cores > info.physical_cores && info.physical_cores > 0);
+    (info.logical_cores > info.physical_cores && info.physical_cores > 0);
 
   // Frequency from sysfs (cpu0 representative).
   info.max_freq_mhz =
-      static_cast<double>(ReadUint64File(
-          "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")) /
-      1000.0;
+    static_cast<double>(
+      ReadUint64File("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")) /
+    1000.0;
   info.base_freq_mhz =
-      static_cast<double>(ReadUint64File(
-          "/sys/devices/system/cpu/cpu0/cpufreq/base_frequency")) /
-      1000.0;
+    static_cast<double>(
+      ReadUint64File("/sys/devices/system/cpu/cpu0/cpufreq/base_frequency")) /
+    1000.0;
   if (info.base_freq_mhz == 0.0) {
     info.base_freq_mhz =
-        static_cast<double>(ReadUint64File(
-            "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq")) /
-        1000.0;
+      static_cast<double>(ReadUint64File(
+        "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq")) /
+      1000.0;
   }
 
   // Cache sizes from sysfs index nodes.
@@ -661,7 +635,7 @@ SystemInfo::CpuInfo SystemInfo::FetchCpuInfo() {
     info.per_core_usage_percent.clear();
     for (size_t i = 1; i < snap.size() && i < impl_->prev_cpu_stats.size(); ++i)
       info.per_core_usage_percent.push_back(
-          snap[i].UsagePercent(impl_->prev_cpu_stats[i]));
+        snap[i].UsagePercent(impl_->prev_cpu_stats[i]));
   }
   // Update baseline for the next call.
   impl_->prev_cpu_stats = snap;
@@ -671,8 +645,6 @@ SystemInfo::CpuInfo SystemInfo::FetchCpuInfo() {
   return info;
 }
 
-// ---------------------------------------------------------------------------
-// MemoryInfo
 // ---------------------------------------------------------------------------
 
 SystemInfo::MemoryInfo SystemInfo::GetMemoryInfo() {
@@ -755,8 +727,6 @@ SystemInfo::MemoryInfo SystemInfo::FetchMemoryInfo() {
 }
 
 // ---------------------------------------------------------------------------
-// DiskInfo
-// ---------------------------------------------------------------------------
 
 vector<SystemInfo::DiskPartition> SystemInfo::GetDiskInfo() {
   lock_guard<mutex> lk(impl_->disk_mutex);
@@ -800,9 +770,9 @@ vector<SystemInfo::DiskPartition> SystemInfo::FetchDiskInfo() {
 
     p.total = static_cast<uint64_t>(sv.f_blocks) * sv.f_frsize;
     p.free = static_cast<uint64_t>(sv.f_bavail) * sv.f_frsize;
-    p.used = (static_cast<uint64_t>(sv.f_blocks) -
-              static_cast<uint64_t>(sv.f_bfree)) *
-             sv.f_frsize;
+    p.used =
+      (static_cast<uint64_t>(sv.f_blocks) - static_cast<uint64_t>(sv.f_bfree)) *
+      sv.f_frsize;
     p.inodes_total = sv.f_files;
     p.inodes_free = sv.f_favail;
     p.inodes_used = (sv.f_files > sv.f_ffree) ? sv.f_files - sv.f_ffree : 0;
@@ -812,8 +782,6 @@ vector<SystemInfo::DiskPartition> SystemInfo::FetchDiskInfo() {
   return partitions;
 }
 
-// ---------------------------------------------------------------------------
-// DiskIoStats
 // ---------------------------------------------------------------------------
 
 vector<SystemInfo::DiskIoStats> SystemInfo::GetDiskIoStats() {
@@ -838,18 +806,16 @@ vector<SystemInfo::DiskIoStats> SystemInfo::FetchDiskIoStats() {
     int major_num, minor_num;
     DiskIoStats s;
     ss >> major_num >> minor_num >> s.device >> s.reads_completed >>
-        s.reads_merged >> s.sectors_read >> s.read_time_ms >>
-        s.writes_completed >> s.writes_merged >> s.sectors_written >>
-        s.write_time_ms >> s.io_in_progress >> s.io_time_ms >>
-        s.weighted_io_time_ms;
+      s.reads_merged >> s.sectors_read >> s.read_time_ms >>
+      s.writes_completed >> s.writes_merged >> s.sectors_written >>
+      s.write_time_ms >> s.io_in_progress >> s.io_time_ms >>
+      s.weighted_io_time_ms;
     if (!s.device.empty())
       result.push_back(move(s));
   }
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// NetworkInfo
 // ---------------------------------------------------------------------------
 
 vector<SystemInfo::NetworkInterface> SystemInfo::GetNetworkInfo() {
@@ -897,8 +863,8 @@ void SystemInfo::ParseProcNetDev(vector<NetworkInterface> &ifaces) {
     istringstream ss(line.substr(colon + 1));
     uint64_t dummy = 0;
     ss >> ni.rx_bytes >> ni.rx_packets >> ni.rx_errors >> ni.rx_dropped >>
-        dummy >> dummy >> dummy >> dummy // fifo, frame, compressed, multicast
-        >> ni.tx_bytes >> ni.tx_packets >> ni.tx_errors >> ni.tx_dropped;
+      dummy >> dummy >> dummy >> dummy // fifo, frame, compressed, multicast
+      >> ni.tx_bytes >> ni.tx_packets >> ni.tx_errors >> ni.tx_dropped;
   }
 }
 
@@ -977,8 +943,6 @@ vector<SystemInfo::NetworkInterface> SystemInfo::FetchNetworkInfo() {
 }
 
 // ---------------------------------------------------------------------------
-// LoadAverage
-// ---------------------------------------------------------------------------
 
 SystemInfo::LoadAverage SystemInfo::GetLoadAverage() {
   lock_guard<mutex> lk(impl_->load_mutex);
@@ -1007,8 +971,6 @@ SystemInfo::LoadAverage SystemInfo::FetchLoadAverage() {
   return la;
 }
 
-// ---------------------------------------------------------------------------
-// ThermalInfo
 // ---------------------------------------------------------------------------
 
 vector<SystemInfo::ThermalZone> SystemInfo::GetThermalInfo() {
@@ -1047,15 +1009,12 @@ vector<SystemInfo::ThermalZone> SystemInfo::FetchThermalInfo() {
   }
   closedir(dir);
 
-  sort(zones.begin(), zones.end(),
-       [](const ThermalZone &a, const ThermalZone &b) {
-         return a.name < b.name;
-       });
+  sort(
+    zones.begin(), zones.end(),
+    [](const ThermalZone &a, const ThermalZone &b) { return a.name < b.name; });
   return zones;
 }
 
-// ---------------------------------------------------------------------------
-// GpuInfo
 // ---------------------------------------------------------------------------
 
 vector<SystemInfo::GpuInfo> SystemInfo::GetGpuInfo() {
@@ -1074,11 +1033,11 @@ vector<SystemInfo::GpuInfo> SystemInfo::FetchGpuInfo() {
     return gpus;
 
   const string query =
-      "--query-gpu=index,name,driver_version,memory.total,memory.used,"
-      "memory.free,utilization.gpu,utilization.memory,temperature.gpu,"
-      "power.draw,power.limit,pci.bus_id,compute_mode";
+    "--query-gpu=index,name,driver_version,memory.total,memory.used,"
+    "memory.free,utilization.gpu,utilization.memory,temperature.gpu,"
+    "power.draw,power.limit,pci.bus_id,compute_mode";
   string out =
-      RunCommand({"nvidia-smi", query, "--format=csv,noheader,nounits"});
+    RunCommand({"nvidia-smi", query, "--format=csv,noheader,nounits"});
   if (out.empty())
     return gpus;
 
@@ -1136,8 +1095,6 @@ vector<SystemInfo::GpuInfo> SystemInfo::FetchGpuInfo() {
 }
 
 // ---------------------------------------------------------------------------
-// DockerContainers
-// ---------------------------------------------------------------------------
 
 vector<SystemInfo::DockerContainer> SystemInfo::GetDockerContainers() {
   lock_guard<mutex> lk(impl_->docker_mutex);
@@ -1155,8 +1112,8 @@ vector<SystemInfo::DockerContainer> SystemInfo::FetchDockerContainers() {
     return containers;
 
   const string fmt =
-      "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}\t"
-      "{{.CreatedAt}}";
+    "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}\t"
+    "{{.CreatedAt}}";
   string out = RunCommand({"docker", "ps", "-a", "--format", fmt});
   if (out.empty())
     return containers;
@@ -1180,8 +1137,6 @@ vector<SystemInfo::DockerContainer> SystemInfo::FetchDockerContainers() {
 }
 
 // ---------------------------------------------------------------------------
-// SystemStats aggregate
-// ---------------------------------------------------------------------------
 
 SystemInfo::SystemStats SystemInfo::GetSystemStats() {
   SystemStats s;
@@ -1196,8 +1151,6 @@ SystemInfo::SystemStats SystemInfo::GetSystemStats() {
   return s;
 }
 
-// ---------------------------------------------------------------------------
-// Process helpers – ParseProcess
 // ---------------------------------------------------------------------------
 
 optional<SystemInfo::ProcessInfo>
@@ -1232,9 +1185,9 @@ SystemInfo::ParseProcess(pid_t pid, const string &proc_root) {
   long rss = 0;
 
   ss >> state_char >> ppid_val >> pgrp >> session >> tty_nr >> tpgid >>
-      flags_val >> minflt >> cminflt >> majflt >> cmajflt >> utime >> stime >>
-      cutime >> cstime >> priority >> nice_val >> num_threads_val >>
-      itrealvalue >> starttime >> vsize >> rss;
+    flags_val >> minflt >> cminflt >> majflt >> cmajflt >> utime >> stime >>
+    cutime >> cstime >> priority >> nice_val >> num_threads_val >>
+    itrealvalue >> starttime >> vsize >> rss;
 
   p.state = string(1, state_char);
   p.ppid = static_cast<pid_t>(ppid_val);
@@ -1260,13 +1213,13 @@ SystemInfo::ParseProcess(pid_t pid, const string &proc_root) {
         double up_secs = stod(uptime_raw);
         auto now_tp = chrono::system_clock::now();
         auto boot_tp =
-            now_tp - chrono::duration_cast<chrono::system_clock::duration>(
-                         chrono::duration<double>(up_secs));
+          now_tp - chrono::duration_cast<chrono::system_clock::duration>(
+                     chrono::duration<double>(up_secs));
         double proc_offset =
-            static_cast<double>(starttime) / static_cast<double>(ticks_per_sec);
+          static_cast<double>(starttime) / static_cast<double>(ticks_per_sec);
         p.start_time =
-            boot_tp + chrono::duration_cast<chrono::system_clock::duration>(
-                          chrono::duration<double>(proc_offset));
+          boot_tp + chrono::duration_cast<chrono::system_clock::duration>(
+                      chrono::duration<double>(proc_offset));
       } catch (...) {
       }
     }
@@ -1296,8 +1249,6 @@ SystemInfo::ParseProcess(pid_t pid, const string &proc_root) {
   return p;
 }
 
-// ---------------------------------------------------------------------------
-// GetAllProcesses
 // ---------------------------------------------------------------------------
 
 vector<SystemInfo::ProcessInfo> SystemInfo::FetchAllProcesses() {
@@ -1382,8 +1333,6 @@ optional<SystemInfo::ProcessInfo> SystemInfo::GetProcess(pid_t pid) {
 }
 
 // ---------------------------------------------------------------------------
-// Network helpers
-// ---------------------------------------------------------------------------
 
 string SystemInfo::GetPrimaryIpv4() {
   // Find the interface associated with the default gateway route.
@@ -1458,7 +1407,7 @@ vector<SystemInfo::ListeningPort> SystemInfo::GetListeningPorts() {
           string fdpath = fd_dir + "/" + fent->d_name;
           char link_buf[256] = {};
           ssize_t len =
-              readlink(fdpath.c_str(), link_buf, sizeof(link_buf) - 1);
+            readlink(fdpath.c_str(), link_buf, sizeof(link_buf) - 1);
           if (len <= 0)
             continue;
           string_view lv(link_buf, static_cast<size_t>(len));
@@ -1509,7 +1458,7 @@ vector<SystemInfo::ListeningPort> SystemInfo::GetListeningPorts() {
       int port_val = 0;
       try {
         port_val = static_cast<int>(
-            stoul(local_addr.substr(colon_pos + 1), nullptr, 16));
+          stoul(local_addr.substr(colon_pos + 1), nullptr, 16));
       } catch (...) {
         continue;
       }
@@ -1561,8 +1510,6 @@ vector<string> SystemInfo::GetDnsServers() {
   return servers;
 }
 
-// ---------------------------------------------------------------------------
-// System-level helpers
 // ---------------------------------------------------------------------------
 
 int SystemInfo::GetLogicalCoreCount() {
@@ -1720,8 +1667,6 @@ unordered_map<string, uint64_t> SystemInfo::GetVmStats() {
 }
 
 // ---------------------------------------------------------------------------
-// Summary
-// ---------------------------------------------------------------------------
 
 string SystemInfo::GetSummaryLine() {
   auto mem = GetMemoryInfo();
@@ -1737,6 +1682,8 @@ string SystemInfo::GetSummaryLine() {
      << "Up: " << FormatUptime(GetUptime());
   return ss.str();
 }
+
+// ---------------------------------------------------------------------------
 
 } // namespace system
 } // namespace utils

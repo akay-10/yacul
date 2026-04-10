@@ -4,7 +4,6 @@
 
 #include <chrono>
 #include <iostream>
-#include <thread>
 
 using namespace utils::system;
 

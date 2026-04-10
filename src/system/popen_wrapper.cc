@@ -5,24 +5,21 @@
 
 #include "popen_wrapper.h"
 
-#include <fcntl.h> // fcntl, F_GETFL, F_SETFL, O_NONBLOCK
-#include <poll.h> // poll, struct pollfd
-#include <signal.h> // kill, SIGTERM, SIGKILL
-#include <sys/types.h> // pid_t
-#include <sys/wait.h> // waitpid, WIFEXITED, WEXITSTATUS, WIFSIGNALED, WTERMSIG
-#include <unistd.h> // fork, pipe, dup2, execvp, read etc.
-
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cerrno> // errno
 #include <climits>
 #include <cstring>
-#include <iterator>
-#include <sstream>
+#include <fcntl.h>  // fcntl, F_GETFL, F_SETFL, O_NONBLOCK
+#include <poll.h>   // poll, struct pollfd
+#include <signal.h> // kill, SIGTERM, SIGKILL
 #include <stdexcept>
+#include <sys/types.h> // pid_t
+#include <sys/wait.h>  // waitpid, WIFEXITED, WEXITSTATUS, WIFSIGNALED, WTERMSIG
 #include <system_error>
-#include <utility> // move, forward
+#include <unistd.h> // fork, pipe, dup2, execvp, read etc.
+#include <utility>  // move, forward
 
 using namespace std;
 
@@ -33,8 +30,6 @@ using namespace std;
     }                                                                          \
   } while (0)
 
-// ---------------------------------------------------------------------------
-// Internal anonymous-namespace utilities
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -60,8 +55,8 @@ private:
   int fd_;
 };
 
-// Read up to 'n' bytes from 'fd'. Returns number of bytes read, 0 on EOF,
-// -1 on error (EAGAIN/EWOULDBLOCK treated as 0 bytes, not error).
+// Read up to 'n' bytes from 'fd'. Returns number of bytes read, 0 on EOF, -1 on
+// error (EAGAIN/EWOULDBLOCK treated as 0 bytes, not error).
 ssize_t ReadAtMost(int fd, char *buf, size_t n) {
   ssize_t r;
   do {
@@ -86,11 +81,11 @@ void SetCloseOnExec(int fd) {
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+
 namespace utils {
 namespace system {
 
-// ---------------------------------------------------------------------------
-// PopenWrapper — construction / destruction
 // ---------------------------------------------------------------------------
 
 PopenWrapper::PopenWrapper(Options options) : opts_(move(options)) {
@@ -100,16 +95,16 @@ PopenWrapper::PopenWrapper(Options options) : opts_(move(options)) {
   timer_pipe_[0] = timer_pipe_[1] = -1;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 PopenWrapper::PopenWrapper(PopenWrapper &&other) noexcept
-    : opts_(move(other.opts_)), child_pid_(other.child_pid_),
-      parent_stdin_write_(other.parent_stdin_write_),
-      parent_stdout_read_(other.parent_stdout_read_),
-      parent_stderr_read_(other.parent_stderr_read_),
-      timed_out_(other.timed_out_.load()),
-      timer_thread_(move(other.timer_thread_)), start_time_(other.start_time_),
-      started_(other.started_), waited_(other.waited_) {
+  : opts_(move(other.opts_)), child_pid_(other.child_pid_),
+    parent_stdin_write_(other.parent_stdin_write_),
+    parent_stdout_read_(other.parent_stdout_read_),
+    parent_stderr_read_(other.parent_stderr_read_),
+    timed_out_(other.timed_out_.load()),
+    timer_thread_(move(other.timer_thread_)), start_time_(other.start_time_),
+    started_(other.started_), waited_(other.waited_) {
   for (int i = 0; i < 2; ++i) {
     stdin_pipe_[i] = other.stdin_pipe_[i];
     stdout_pipe_[i] = other.stdout_pipe_[i];
@@ -126,7 +121,7 @@ PopenWrapper::PopenWrapper(PopenWrapper &&other) noexcept
   other.waited_ = false;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 PopenWrapper &PopenWrapper::operator=(PopenWrapper &&other) noexcept {
   if (this != &other) {
@@ -136,7 +131,7 @@ PopenWrapper &PopenWrapper::operator=(PopenWrapper &&other) noexcept {
   return *this;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 PopenWrapper::~PopenWrapper() {
   // If the child is still running, kill it.
@@ -167,8 +162,6 @@ PopenWrapper::~PopenWrapper() {
 }
 
 // ---------------------------------------------------------------------------
-// Static helpers
-// ---------------------------------------------------------------------------
 
 string PopenWrapper::ShellEscape(string_view token) {
   // Wrap in single quotes; replace embedded ' with '\'' (end quote, literal
@@ -191,7 +184,7 @@ string PopenWrapper::ShellEscape(string_view token) {
   return result;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 string PopenWrapper::BuildShellCommand(const vector<string> &argv) {
   string cmd;
@@ -203,7 +196,7 @@ string PopenWrapper::BuildShellCommand(const vector<string> &argv) {
   return cmd;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void PopenWrapper::CloseFd(int &fd) {
   if (fd >= 0) {
@@ -212,7 +205,7 @@ void PopenWrapper::CloseFd(int &fd) {
   }
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void PopenWrapper::SetNonBlocking(int fd) {
   int flags = ::fcntl(fd, F_GETFL);
@@ -221,8 +214,6 @@ void PopenWrapper::SetNonBlocking(int fd) {
   ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-// ---------------------------------------------------------------------------
-// argv / envp helpers
 // ---------------------------------------------------------------------------
 
 vector<char *> PopenWrapper::BuildArgv() const {
@@ -255,7 +246,7 @@ vector<char *> PopenWrapper::BuildArgv() const {
   return argv;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 vector<string> PopenWrapper::BuildEnvp() const {
   if (opts_.extra_env.empty() && !opts_.replace_env)
@@ -288,16 +279,14 @@ vector<string> PopenWrapper::BuildEnvp() const {
 }
 
 // ---------------------------------------------------------------------------
-// ForkExec
-// ---------------------------------------------------------------------------
 
 void PopenWrapper::ForkExec() {
   const bool need_stdin =
-      (opts_.mode == Mode::kWriteOnly || opts_.mode == Mode::kReadWrite);
+    (opts_.mode == Mode::kWriteOnly || opts_.mode == Mode::kReadWrite);
   const bool need_stdout =
-      (opts_.mode == Mode::kReadOnly || opts_.mode == Mode::kReadWrite);
+    (opts_.mode == Mode::kReadOnly || opts_.mode == Mode::kReadWrite);
   const bool need_stderr =
-      opts_.capture_stderr && !opts_.merge_stderr_into_stdout;
+    opts_.capture_stderr && !opts_.merge_stderr_into_stdout;
 
   // Create pipes.
   if (need_stdin)
@@ -329,7 +318,7 @@ void PopenWrapper::ForkExec() {
 
   std::vector<char *> argv = BuildArgv();
   const char *exe =
-      opts_.executable_path.empty() ? argv[0] : opts_.executable_path.c_str();
+    opts_.executable_path.empty() ? argv[0] : opts_.executable_path.c_str();
 
   start_time_ = std::chrono::steady_clock::now();
   child_pid_ = ::fork();
@@ -417,8 +406,6 @@ void PopenWrapper::ForkExec() {
 }
 
 // ---------------------------------------------------------------------------
-// Timer thread
-// ---------------------------------------------------------------------------
 
 // Launched in a background thread; writes one byte to timer_pipe_[1] when the
 // timeout expires, or exits early if a cancellation byte is already present.
@@ -431,7 +418,7 @@ static void RunTimer(int cancel_read_fd, int signal_write_fd,
   pfd.events = POLLIN;
 
   int ms = static_cast<int>(
-      min(timeout.count(), static_cast<decltype(timeout.count())>(INT_MAX)));
+    min(timeout.count(), static_cast<decltype(timeout.count())>(INT_MAX)));
   int r = ::poll(&pfd, 1, ms);
 
   if (r == 0) {
@@ -442,7 +429,7 @@ static void RunTimer(int cancel_read_fd, int signal_write_fd,
     pfd.fd = cancel_read_fd;
     pfd.events = POLLIN;
     int grace_ms = static_cast<int>(
-        min(grace.count(), static_cast<decltype(grace.count())>(INT_MAX)));
+      min(grace.count(), static_cast<decltype(grace.count())>(INT_MAX)));
     int r2 = ::poll(&pfd, 1, grace_ms);
     if (r2 == 0) {
       ::kill(child_pid, SIGKILL);
@@ -455,8 +442,6 @@ static void RunTimer(int cancel_read_fd, int signal_write_fd,
   // If r > 0, the cancel fd became readable — we were cancelled.
 }
 
-// ---------------------------------------------------------------------------
-// Start / Wait / Run
 // ---------------------------------------------------------------------------
 
 void PopenWrapper::Start() {
@@ -472,12 +457,12 @@ void PopenWrapper::Start() {
     // Ensure parent_stdout_read_ / parent_stderr_read_ are non-blocking
     // already (done in ForkExec).
     timer_thread_ =
-        thread(RunTimer, timer_pipe_[0], timer_pipe_[1], opts_.timeout,
-               ref(timed_out_), child_pid_, opts_.kill_grace_period);
+      thread(RunTimer, timer_pipe_[0], timer_pipe_[1], opts_.timeout,
+             ref(timed_out_), child_pid_, opts_.kill_grace_period);
   }
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 PopenWrapper::Result PopenWrapper::Wait() {
   if (!started_) {
@@ -494,7 +479,7 @@ PopenWrapper::Result PopenWrapper::Wait() {
 
   auto end_time = chrono::steady_clock::now();
   result.elapsed_ms =
-      chrono::duration_cast<chrono::milliseconds>(end_time - start_time_);
+    chrono::duration_cast<chrono::milliseconds>(end_time - start_time_);
   result.timed_out = timed_out_.load(memory_order_relaxed);
 
   // Cancel and join timer thread.
@@ -512,7 +497,7 @@ PopenWrapper::Result PopenWrapper::Wait() {
   return result;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 PopenWrapper::Result PopenWrapper::Run() {
   Start();
@@ -537,8 +522,6 @@ PopenWrapper::Result PopenWrapper::Run() {
   return Wait();
 }
 
-// ---------------------------------------------------------------------------
-// I/O loop (poll-based, portable)
 // ---------------------------------------------------------------------------
 
 bool PopenWrapper::DrainFd(int fd, string &buffer, const StreamCallback &cb,
@@ -589,7 +572,7 @@ bool PopenWrapper::DrainFd(int fd, string &buffer, const StreamCallback &cb,
   return true;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void PopenWrapper::DriveIO(Result &result) {
   // In ReadWrite mode, we need to write stdin concurrently with reading.
@@ -663,8 +646,8 @@ void PopenWrapper::DriveIO(Result &result) {
                                      opts_.stdin_data.size() - stdin_offset);
           ssize_t n;
           do {
-            n = ::write(parent_stdin_write_, remaining.data(),
-                        remaining.size());
+            n =
+              ::write(parent_stdin_write_, remaining.data(), remaining.size());
           } while (n == -1 && errno == EINTR);
 
           if (n > 0) {
@@ -714,8 +697,6 @@ void PopenWrapper::DriveIO(Result &result) {
 }
 
 // ---------------------------------------------------------------------------
-// WaitpidWithTimeout
-// ---------------------------------------------------------------------------
 
 void PopenWrapper::WaitpidWithTimeout(Result &result) {
   if (child_pid_ <= 0)
@@ -728,11 +709,11 @@ void PopenWrapper::WaitpidWithTimeout(Result &result) {
   // timeout.  The timer thread has already sent SIGKILL in that case.
   constexpr chrono::milliseconds kPollInterval{10};
   const int max_iterations =
-      opts_.timeout.count() > 0
-          ? static_cast<int>(
-                (opts_.timeout + opts_.kill_grace_period + chrono::seconds(1)) /
-                kPollInterval)
-          : numeric_limits<int>::max();
+    opts_.timeout.count() > 0
+      ? static_cast<int>(
+          (opts_.timeout + opts_.kill_grace_period + chrono::seconds(1)) /
+          kPollInterval)
+      : numeric_limits<int>::max();
 
   for (int i = 0; i < max_iterations; ++i) {
     do {
@@ -768,8 +749,6 @@ void PopenWrapper::WaitpidWithTimeout(Result &result) {
 }
 
 // ---------------------------------------------------------------------------
-// Async streaming API
-// ---------------------------------------------------------------------------
 
 ssize_t PopenWrapper::WriteStdin(string_view data) {
   if (parent_stdin_write_ < 0)
@@ -781,11 +760,11 @@ ssize_t PopenWrapper::WriteStdin(string_view data) {
   return n;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void PopenWrapper::CloseStdin() { CloseFd(parent_stdin_write_); }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 static std::optional<std::string> ReadChunkBlocking(int fd,
                                                     std::size_t buf_size) {
@@ -811,20 +790,18 @@ static std::optional<std::string> ReadChunkBlocking(int fd,
   return std::string(buf.data(), static_cast<std::size_t>(n));
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 std::optional<std::string> PopenWrapper::ReadStdoutChunk() {
   return ReadChunkBlocking(parent_stdout_read_, opts_.read_buffer_size);
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 std::optional<std::string> PopenWrapper::ReadStderrChunk() {
   return ReadChunkBlocking(parent_stderr_read_, opts_.read_buffer_size);
 }
 
-// ---------------------------------------------------------------------------
-// Signal helpers
 // ---------------------------------------------------------------------------
 
 void PopenWrapper::Terminate() {
@@ -832,27 +809,28 @@ void PopenWrapper::Terminate() {
     ::kill(child_pid_, SIGTERM);
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 void PopenWrapper::Kill() {
   if (child_pid_ > 0)
     ::kill(child_pid_, SIGKILL);
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 bool PopenWrapper::IsRunning() const {
   if (child_pid_ <= 0)
     return false;
-  // kill(pid, 0) checks liveness without reaping the child.
-  // Returns 0 if the process exists and we can signal it, -1 with ESRCH if not.
+  // kill(pid, 0) checks liveness without reaping the child. Returns 0 if the
+  // process exists and we can signal it, -1 with ESRCH if not.
   return ::kill(child_pid_, 0) == 0;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 pid_t PopenWrapper::GetPid() const { return child_pid_; }
-//------------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 
 } // namespace system
 } // namespace utils

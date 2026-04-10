@@ -1,62 +1,57 @@
 #ifndef UTILS_SYSTEM_POPEN_WRAPPER_H
 #define UTILS_SYSTEM_POPEN_WRAPPER_H
 
-#include <memory> // shared_ptr
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "basic/basic.h"
 
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <functional>
-#include <mutex>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <system_error>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <thread>
+#include <unistd.h>
 #include <vector>
-
-#include "basic/basic.h"
 
 namespace utils {
 namespace system {
 
-// PopenWrapper provides a production-grade wrapper around popen()/pclose() and
-// raw POSIX pipe/fork primitives for launching child processes, capturing
-// stdout/stderr independently, writing to stdin, enforcing timeouts, and
-// retrieving exit status.
-//
-// Design goals:
-//  - Zero-copy reads via user-supplied callbacks.
-//  - Non-blocking I/O with epoll on Linux.
-//  - Full stdin support (write, then close).
-//  - Independent stderr capture (requires fork+exec path, not popen).
-//  - Configurable timeouts with SIGKILL escalation.
-//  - Thread-safe: a single instance must not be used from multiple threads
-//    concurrently, but separate instances are fully independent.
-//
-// Usage example:
-//   PopenWrapper::Options opts;
-//   opts.command = {"ls", "-la", "/tmp"};
-//   opts.capture_stderr = true;
-//   opts.timeout = std::chrono::seconds(5);
-//
-//   PopenWrapper proc(opts);
-//   auto result = proc.Run();
-//   if (result.ok()) {
-//     std::cout << result->stdout_data;
-//   }
+/*
+ * PopenWrapper provides a production-grade wrapper around popen()/pclose() and
+ * raw POSIX pipe/fork primitives for launching child processes, capturing
+ * stdout/stderr independently, writing to stdin, enforcing timeouts, and
+ * retrieving exit status.
+ *
+ * Design goals:
+ *  - Zero-copy reads via user-supplied callbacks.
+ *  - Non-blocking I/O with epoll on Linux.
+ *  - Full stdin support (write, then close).
+ *  - Independent stderr capture (requires fork+exec path, not popen).
+ *  - Configurable timeouts with SIGKILL escalation.
+ *  - Thread-safe: a single instance must not be used from multiple threads
+ *    concurrently, but separate instances are fully independent.
+ *
+ * Usage example:
+ *   PopenWrapper::Options opts;
+ *   opts.command = {"ls", "-la", "/tmp"};
+ *   opts.capture_stderr = true;
+ *   opts.timeout = std::chrono::seconds(5);
+ *
+ *   PopenWrapper proc(opts);
+ *   auto result = proc.Run();
+ *   if (result.ok()) {
+ *     std::cout << result->stdout_data;
+ *   }
+ */
 
 class PopenWrapper {
 public:
   typedef std::shared_ptr<PopenWrapper> Ptr;
   typedef std::shared_ptr<const PopenWrapper> PtrConst;
-
-  // ---------------------------------------------------------------------------
-  // Public types
-  // ---------------------------------------------------------------------------
 
   // Mode controls which streams the wrapper opens.
   enum class Mode {
@@ -87,8 +82,8 @@ public:
     // Open mode (read/write/both).
     Mode mode = Mode::kReadOnly;
 
-    // Capture stderr into Result::stderr_data (requires fork+exec).
-    // When false, stderr inherits the parent's stderr fd.
+    // Capture stderr into Result::stderr_data (requires fork+exec). When false,
+    // stderr inherits the parent's stderr fd.
     bool capture_stderr = false;
 
     // Merge stderr into stdout stream.
@@ -97,7 +92,7 @@ public:
     // Working directory for the child. Empty means inherit.
     std::string working_directory;
 
-    // Additional environment variables as "KEY=VALUE".  These are appended to
+    // Additional environment variables as "KEY=VALUE". These are appended to
     // (or replace, depending on 'replace_env') the inherited environment.
     std::vector<std::string> extra_env;
 
@@ -169,10 +164,6 @@ public:
     bool Success() const { return exited_normally && exit_code == 0; }
   };
 
-  // ---------------------------------------------------------------------------
-  // Construction / destruction
-  // ---------------------------------------------------------------------------
-
   explicit PopenWrapper(Options options);
 
   // Not copyable.
@@ -183,10 +174,6 @@ public:
   PopenWrapper &operator=(PopenWrapper &&) noexcept;
 
   ~PopenWrapper();
-
-  // ---------------------------------------------------------------------------
-  // Execution API
-  // ---------------------------------------------------------------------------
 
   // Run() launches the child process, performs I/O, waits for completion, and
   // returns a Result. Throws std::system_error on fork/exec/pipe failures.
@@ -227,10 +214,6 @@ public:
   // PID of the child, or -1 if not started.
   pid_t GetPid() const;
 
-  // ---------------------------------------------------------------------------
-  // Static helpers
-  // ---------------------------------------------------------------------------
-
   // Shell-escape a single token for safe inclusion in a shell command string.
   static std::string ShellEscape(std::string_view token);
 
@@ -238,10 +221,6 @@ public:
   static std::string BuildShellCommand(const std::vector<std::string> &argv);
 
 private:
-  // ---------------------------------------------------------------------------
-  // Internal helpers
-  // ---------------------------------------------------------------------------
-
   // Fork + exec the child process, setting up all pipe fds.
   void ForkExec();
 
@@ -268,9 +247,7 @@ private:
   // Wait for the child with optional timeout. Populates raw_exit_status.
   void WaitpidWithTimeout(Result &result);
 
-  // ---------------------------------------------------------------------------
   // Data members
-  // ---------------------------------------------------------------------------
 
   Options opts_;
 

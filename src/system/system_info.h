@@ -1,67 +1,61 @@
 #ifndef UTILS_SYSTEM_SYSTEM_INFO_H
 #define UTILS_SYSTEM_SYSTEM_INFO_H
 
-#include <sys/statvfs.h>
-#include <sys/sysinfo.h>
-#include <sys/types.h>
-#include <sys/utsname.h>
+#include "basic/basic.h"
 
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <sys/statvfs.h>
+#include <sys/sysinfo.h>
+#include <sys/types.h>
+#include <sys/utsname.h>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
-#include "basic/basic.h"
-#include "popen_wrapper.h"
-
 namespace utils {
 namespace system {
 
-// SystemInfo provides a production-grade, thread-safe, high-performance API
-// for querying and monitoring system resources on Linux. It reads from /proc,
-// /sys, and via PopenWrapper-driven commands.
-//
-// Design goals:
-//  - Lazy evaluation: data is fetched only when requested.
-//  - Caching with TTL: repeated calls within the TTL window return cached data.
-//  - Background refresh: optional watcher thread keeps caches warm.
-//  - Zero heap allocation on hot paths where possible.
-//  - All structs are value types; pointers are never leaked.
-//
-// Thread safety:
-//  - All public methods are safe to call concurrently from multiple threads.
-//  - A single SystemInfo instance may be shared freely.
-//
-// Note on move semantics: SystemInfo holds non-movable members (std::mutex,
-// std::atomic). Move construction/assignment are implemented via internal
-// Impl pimpl, keeping the public API clean.
-//
-// Usage example:
-//   SystemInfo::Options opts;
-//   opts.cache_ttl = std::chrono::seconds(5);
-//   SystemInfo info(std::move(opts));
-//
-//   auto cpu  = info.GetCpuInfo();
-//   auto mem  = info.GetMemoryInfo();
-//   auto disk = info.GetDiskInfo();
+/*
+ * SystemInfo provides a production-grade, thread-safe, high-performance API
+ * for querying and monitoring system resources on Linux. It reads from /proc,
+ * /sys, and via PopenWrapper-driven commands.
+ *
+ * Design goals:
+ *  - Lazy evaluation: data is fetched only when requested.
+ *  - Caching with TTL: repeated calls within the TTL window return cached data.
+ *  - Background refresh: optional watcher thread keeps caches warm.
+ *  - Zero heap allocation on hot paths where possible.
+ *  - All structs are value types; pointers are never leaked.
+ *
+ * Thread safety:
+ *  - All public methods are safe to call concurrently from multiple threads.
+ *  - A single SystemInfo instance may be shared freely.
+ *
+ * Note on move semantics: SystemInfo holds non-movable members (std::mutex,
+ * std::atomic). Move construction/assignment are implemented via internal
+ * Impl pimpl, keeping the public API clean.
+ *
+ * Usage example:
+ *   SystemInfo::Options opts;
+ *   opts.cache_ttl = std::chrono::seconds(5);
+ *   SystemInfo info(std::move(opts));
+ *
+ *   auto cpu  = info.GetCpuInfo();
+ *   auto mem  = info.GetMemoryInfo();
+ *   auto disk = info.GetDiskInfo();
+ */
 
 class SystemInfo {
 public:
   using Ptr = std::shared_ptr<SystemInfo>;
   using PtrConst = std::shared_ptr<const SystemInfo>;
-
-  // ---------------------------------------------------------------------------
-  // Public types – plain-old-data structs, all fields zero-initialised.
-  // ---------------------------------------------------------------------------
 
   // OsInfo describes the operating system and kernel.
   struct OsInfo {
@@ -284,8 +278,8 @@ public:
     std::vector<std::string> ports;
   };
 
-  // Options controls caching and background-refresh behaviour.
-  // Defined before the constructor so Options{} default arg is valid.
+  // Options controls caching and background-refresh behaviour. Defined before
+  // the constructor so Options{} default arg is valid.
   struct Options {
     // How long a cached value is considered fresh. Zero disables caching.
     std::chrono::milliseconds cache_ttl{std::chrono::seconds(5)};
@@ -298,9 +292,9 @@ public:
 
     // Filesystem types to skip when enumerating disk partitions.
     std::vector<std::string> ignored_fs_types{
-        "tmpfs",   "devtmpfs",   "squashfs", "overlay",   "proc",   "sysfs",
-        "cgroup",  "cgroup2",    "devpts",   "hugetlbfs", "mqueue", "debugfs",
-        "tracefs", "securityfs", "fusectl",  "pstore"};
+      "tmpfs",   "devtmpfs",   "squashfs", "overlay",   "proc",   "sysfs",
+      "cgroup",  "cgroup2",    "devpts",   "hugetlbfs", "mqueue", "debugfs",
+      "tracefs", "securityfs", "fusectl",  "pstore"};
 
     // If true, include pseudo-filesystems in partition results.
     bool include_pseudo_filesystems = false;
@@ -312,16 +306,13 @@ public:
     std::chrono::milliseconds command_timeout{std::chrono::seconds(10)};
   };
 
-  // ---------------------------------------------------------------------------
-  // Construction / destruction
-  // ---------------------------------------------------------------------------
-
   // Construct with default options.
   SystemInfo();
+
   // Construct with custom options.
   explicit SystemInfo(Options options);
 
-  // Not copyable – mutexes are not copyable.
+  // Not copyable; mutexes are not copyable.
   DISALLOW_COPY_AND_ASSIGN(SystemInfo);
 
   // Move is implemented via Impl pimpl (mutexes are not movable by default).
@@ -330,9 +321,7 @@ public:
 
   ~SystemInfo();
 
-  // ---------------------------------------------------------------------------
   // Core queries – all return by value; results are cached internally.
-  // ---------------------------------------------------------------------------
 
   // Static OS and kernel information. Seldom changes; long TTL is safe.
   OsInfo GetOsInfo();
@@ -344,7 +333,7 @@ public:
   // Compute CPU usage by diffing two /proc/stat snapshots separated by
   // 'interval'. Blocks the caller for 'interval'.
   CpuInfo GetCpuUsage(
-      std::chrono::milliseconds interval = std::chrono::milliseconds(500));
+    std::chrono::milliseconds interval = std::chrono::milliseconds(500));
 
   // Memory information from /proc/meminfo.
   MemoryInfo GetMemoryInfo();
@@ -373,9 +362,7 @@ public:
   // Snapshot of all commonly-needed metrics in one call.
   SystemStats GetSystemStats();
 
-  // ---------------------------------------------------------------------------
   // Process queries
-  // ---------------------------------------------------------------------------
 
   // Return all running processes.
   std::vector<ProcessInfo> GetAllProcesses();
@@ -392,9 +379,7 @@ public:
   // Return info for a specific PID, or nullopt if the process does not exist.
   std::optional<ProcessInfo> GetProcess(pid_t pid);
 
-  // ---------------------------------------------------------------------------
   // Network helpers
-  // ---------------------------------------------------------------------------
 
   // Return the primary outbound IPv4 address, or empty string.
   std::string GetPrimaryIpv4();
@@ -417,9 +402,7 @@ public:
   // Return DNS resolver addresses from /etc/resolv.conf.
   std::vector<std::string> GetDnsServers();
 
-  // ---------------------------------------------------------------------------
   // Convenience system-level helpers
-  // ---------------------------------------------------------------------------
 
   // Number of online logical CPU cores.
   int GetLogicalCoreCount();
@@ -460,9 +443,7 @@ public:
   // Virtual memory statistics from /proc/vmstat.
   std::unordered_map<std::string, uint64_t> GetVmStats();
 
-  // ---------------------------------------------------------------------------
   // Cache control
-  // ---------------------------------------------------------------------------
 
   // Invalidate all cached data, forcing re-fetch on next access.
   void InvalidateCache();
@@ -472,9 +453,7 @@ public:
   // "load", "docker".
   void InvalidateCache(const std::string &domain);
 
-  // ---------------------------------------------------------------------------
   // Background refresh control
-  // ---------------------------------------------------------------------------
 
   // Start background refresh thread (idempotent if already running).
   void StartBackgroundRefresh();
@@ -485,9 +464,7 @@ public:
   // True if the background thread is currently running.
   bool IsBackgroundRefreshRunning() const;
 
-  // ---------------------------------------------------------------------------
   // Formatting helpers (static, no locking needed)
-  // ---------------------------------------------------------------------------
 
   // Format bytes as a human-readable string, e.g. "3.72 GiB".
   static std::string FormatBytes(uint64_t bytes);
@@ -501,9 +478,7 @@ public:
   // Return a compact one-line summary string of current system health.
   std::string GetSummaryLine();
 
-  // ---------------------------------------------------------------------------
   // Low-level static file helpers
-  // ---------------------------------------------------------------------------
 
   // Read the entire content of a procfs/sysfs file. Returns "" on error.
   static std::string ReadFile(const std::string &path);
@@ -516,11 +491,6 @@ public:
   static bool ExecutableExists(const std::string &name);
 
 private:
-  // ---------------------------------------------------------------------------
-  // Impl – holds all non-movable state behind a unique_ptr so that
-  // SystemInfo itself can be moved cheaply and correctly.
-  // ---------------------------------------------------------------------------
-
   struct Impl {
     Options opts;
 
@@ -537,9 +507,7 @@ private:
     mutable std::mutex proc_mutex;
     mutable std::mutex load_mutex;
 
-    // ---------------------------------------------------------------------------
     // Generic TTL cache entry.
-    // ---------------------------------------------------------------------------
     template <typename T> struct CacheEntry {
       T value{};
       std::chrono::steady_clock::time_point fetched_at{};
@@ -583,9 +551,7 @@ private:
 
   std::unique_ptr<Impl> impl_;
 
-  // ---------------------------------------------------------------------------
   // Internal fetch helpers (called under appropriate locks)
-  // ---------------------------------------------------------------------------
 
   OsInfo FetchOsInfo();
   CpuInfo FetchCpuInfo();

@@ -1,23 +1,14 @@
 #include "popen_wrapper.h"
 
-#include <gtest/gtest.h>
-
 #include <chrono>
 #include <cstdlib>
-#include <fstream>
-#include <numeric>
-#include <sstream>
+#include <gtest/gtest.h>
 #include <string>
 #include <thread>
 #include <vector>
 
 using namespace std::chrono_literals;
-
 using namespace utils::system;
-
-// =============================================================================
-// Helpers
-// =============================================================================
 
 namespace {
 
@@ -41,19 +32,11 @@ PopenWrapper::Options RwOpts(std::vector<std::string> cmd,
 
 } // namespace
 
-// =============================================================================
-// Test fixture
-// =============================================================================
-
 class PopenWrapperTest : public ::testing::Test {
 protected:
   void SetUp() override {}
   void TearDown() override {}
 };
-
-// =============================================================================
-// 1. Basic execution
-// =============================================================================
 
 TEST_F(PopenWrapperTest, Run_BasicEcho) {
   PopenWrapper proc(ReadOpts({"echo", "hello world"}));
@@ -92,10 +75,6 @@ TEST_F(PopenWrapperTest, Run_BinaryLikeOutput) {
   EXPECT_EQ(result.stdout_data[1], '\0');
   EXPECT_EQ(result.stdout_data[2], 'b');
 }
-
-// =============================================================================
-// 2. Shell mode
-// =============================================================================
 
 TEST_F(PopenWrapperTest, Run_ShellMode_Arithmetic) {
   auto opts = ReadOpts({"echo $((1+2))"});
@@ -139,10 +118,6 @@ TEST_F(PopenWrapperTest, Run_ShellMode_SpecialChars_InArgs) {
   EXPECT_TRUE(result.Success());
   EXPECT_EQ(result.stdout_data, "it's alive\n");
 }
-
-// =============================================================================
-// 3. Exit codes and signals
-// =============================================================================
 
 TEST_F(PopenWrapperTest, Run_ExitCode_Zero) {
   PopenWrapper proc(ReadOpts({"true"}));
@@ -192,10 +167,6 @@ TEST_F(PopenWrapperTest, Run_KilledBySigterm) {
   EXPECT_TRUE(result.killed_by_signal);
   EXPECT_EQ(result.signal_number, SIGTERM);
 }
-
-// =============================================================================
-// 4. Stdin modes
-// =============================================================================
 
 TEST_F(PopenWrapperTest, Run_WriteOnlyMode) {
   auto opts = PopenWrapper::Options{};
@@ -256,10 +227,6 @@ TEST_F(PopenWrapperTest, Run_StdinTransformation) {
   EXPECT_EQ(result.stdout_data, "HELLO WORLD");
 }
 
-// =============================================================================
-// 5. Stderr capture and merging
-// =============================================================================
-
 TEST_F(PopenWrapperTest, Run_CaptureStderr_Independent) {
   auto opts = ReadOpts({"bash", "-c", "echo stdout >&1; echo stderr >&2"});
   opts.capture_stderr = true;
@@ -318,10 +285,6 @@ TEST_F(PopenWrapperTest, Run_NoCaptureStderr_StderrNotInResult) {
   EXPECT_TRUE(result.stderr_data.empty());
 }
 
-// =============================================================================
-// 6. Environment variables
-// =============================================================================
-
 TEST_F(PopenWrapperTest, Run_ExtraEnv_AddNew) {
   auto opts = ReadOpts({"bash", "-c", "echo $MY_TEST_VAR"});
   opts.extra_env = {"MY_TEST_VAR=hello_from_env"};
@@ -371,10 +334,6 @@ TEST_F(PopenWrapperTest, Run_ReplaceEnv_NoInheritance) {
   EXPECT_EQ(result.stdout_data, "no_home\n");
 }
 
-// =============================================================================
-// 7. Working directory
-// =============================================================================
-
 TEST_F(PopenWrapperTest, Run_WorkingDirectory) {
   auto opts = ReadOpts({"pwd"});
   opts.working_directory = "/tmp";
@@ -400,10 +359,6 @@ TEST_F(PopenWrapperTest, Run_InvalidWorkingDirectory) {
   // Child calls _exit(127) when chdir fails.
   EXPECT_FALSE(result.Success());
 }
-
-// =============================================================================
-// 8. Output limiting
-// =============================================================================
 
 TEST_F(PopenWrapperTest, Run_MaxOutputBytes_Truncated) {
   auto opts = ReadOpts({"yes", "a"});
@@ -438,10 +393,6 @@ TEST_F(PopenWrapperTest, Run_MaxOutputBytes_ExactSize) {
   EXPECT_FALSE(result.output_truncated);
   EXPECT_EQ(result.stdout_data.size(), 10u);
 }
-
-// =============================================================================
-// 9. Callbacks
-// =============================================================================
 
 TEST_F(PopenWrapperTest, Run_StdoutCallback_CollectsAllData) {
   auto opts = ReadOpts({"echo", "callback_test"});
@@ -513,10 +464,6 @@ TEST_F(PopenWrapperTest, Run_StdoutCallback_LargeStream) {
   EXPECT_TRUE(result.stdout_data.empty());
 }
 
-// =============================================================================
-// 10. Timeout
-// =============================================================================
-
 TEST_F(PopenWrapperTest, Run_Timeout_KillsChild) {
   auto opts = ReadOpts({"sleep", "60"});
   opts.timeout = 150ms;
@@ -569,10 +516,6 @@ TEST_F(PopenWrapperTest, Run_Timeout_ElapsedMs_Populated) {
   EXPECT_LT(result.elapsed_ms.count(), 2000);
 }
 
-// =============================================================================
-// 11. Executable path override
-// =============================================================================
-
 TEST_F(PopenWrapperTest, Run_ExecutablePath_Override) {
   auto opts = ReadOpts({"myapp", "arg1"});
   opts.executable_path = "/bin/echo";
@@ -582,10 +525,6 @@ TEST_F(PopenWrapperTest, Run_ExecutablePath_Override) {
   EXPECT_TRUE(result.Success());
   EXPECT_EQ(result.stdout_data, "arg1\n");
 }
-
-// =============================================================================
-// 12. Async API (Start / WriteStdin / ReadChunk / Wait)
-// =============================================================================
 
 TEST_F(PopenWrapperTest, Start_GetPid_BeforeAndAfter) {
   PopenWrapper proc(ReadOpts({"true"}));
@@ -689,10 +628,6 @@ TEST_F(PopenWrapperTest, Run_CalledTwice_Throws) {
   EXPECT_THROW(proc.Run(), std::logic_error);
 }
 
-// =============================================================================
-// 13. Terminate / Kill
-// =============================================================================
-
 TEST_F(PopenWrapperTest, Terminate_SendsSigterm) {
   PopenWrapper proc(ReadOpts({"sleep", "60"}));
   proc.Start();
@@ -730,10 +665,6 @@ TEST_F(PopenWrapperTest, Kill_BeforeStart_NoThrow) {
   EXPECT_NO_THROW(proc.Kill());
 }
 
-// =============================================================================
-// 14. Move semantics
-// =============================================================================
-
 TEST_F(PopenWrapperTest, MoveConstruct_BeforeStart) {
   PopenWrapper proc1(ReadOpts({"echo", "moved"}));
   PopenWrapper proc2 = std::move(proc1);
@@ -755,10 +686,6 @@ TEST_F(PopenWrapperTest, MoveAssign_BeforeStart) {
   EXPECT_TRUE(result.Success());
   EXPECT_EQ(result.stdout_data, "a\n");
 }
-
-// =============================================================================
-// 15. Static helpers
-// =============================================================================
 
 TEST_F(PopenWrapperTest, ShellEscape_Plain) {
   EXPECT_EQ(PopenWrapper::ShellEscape("hello"), "'hello'");
@@ -817,10 +744,6 @@ TEST_F(PopenWrapperTest, BuildShellCommand_Roundtrip) {
   EXPECT_EQ(result.stdout_data, "a b c'd\n");
 }
 
-// =============================================================================
-// 16. Result fields
-// =============================================================================
-
 TEST_F(PopenWrapperTest, Result_ElapsedMs_Nonzero) {
   auto opts = ReadOpts({"bash", "-c", "sleep 0.05"});
   PopenWrapper proc(std::move(opts));
@@ -838,10 +761,6 @@ TEST_F(PopenWrapperTest, Result_RawExitStatus_WIFEXITED) {
   EXPECT_TRUE(WIFEXITED(result.raw_exit_status));
 }
 
-// =============================================================================
-// 17. Edge cases
-// =============================================================================
-
 TEST_F(PopenWrapperTest, Run_NonExistentCommand_ExitsWithCode127) {
   auto opts = ReadOpts({"/no/such/binary/xyz123"});
   PopenWrapper proc(std::move(opts));
@@ -857,7 +776,7 @@ TEST_F(PopenWrapperTest, Run_VeryLongOutputLine) {
   // Single line of 500 KB.
   const std::size_t kLen = 500000;
   auto opts = ReadOpts(
-      {"bash", "-c", "printf '%0.s-' $(seq 1 " + std::to_string(kLen) + ")"});
+    {"bash", "-c", "printf '%0.s-' $(seq 1 " + std::to_string(kLen) + ")"});
   PopenWrapper proc(std::move(opts));
   auto result = proc.Run();
 
@@ -895,10 +814,6 @@ TEST_F(PopenWrapperTest, Run_StdinDataIgnored_InReadOnlyMode) {
   EXPECT_TRUE(result.Success());
   EXPECT_EQ(result.stdout_data, "read_only\n");
 }
-
-// =============================================================================
-// main
-// =============================================================================
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

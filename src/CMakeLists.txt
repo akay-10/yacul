@@ -1,3 +1,5 @@
+set(UTILS_SRC_ROOT "${CMAKE_CURRENT_LIST_DIR}")
+
 add_subdirectory(basic)
 add_subdirectory(concurrency)
 add_subdirectory(hashing)

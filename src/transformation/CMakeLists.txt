@@ -193,7 +193,7 @@ else()
   add_library(libtransformation STATIC ${_DT_SOURCES})
 endif()
 
-target_include_directories(libtransformation PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(libtransformation PUBLIC ${UTILS_SRC_ROOT})
 
 # Compile-time feature macros — propagated to consumers via PUBLIC
 if(UTILS_TRANSFORMATION_ENABLE_LZ4)

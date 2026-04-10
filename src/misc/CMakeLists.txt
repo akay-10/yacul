@@ -1,6 +1,6 @@
 add_library(libmisc STATIC monitor_process.cc)
 
-target_include_directories(libmisc PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(libmisc PUBLIC ${UTILS_SRC_ROOT})
 
 target_link_libraries(libmisc PUBLIC libbasics liblogging)
 

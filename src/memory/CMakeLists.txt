@@ -25,7 +25,7 @@ endif()
 
 add_library(libmemory STATIC arena.cc buffer.cc)
 
-target_include_directories(libmemory PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(libmemory PUBLIC ${UTILS_SRC_ROOT})
 
 if(UTILS_GPERFTOOLS_AVAILABLE)
   if(UTILS_USE_EXTERNAL_GPERFTOOLS)

@@ -29,7 +29,7 @@ endif()
 
 add_library(liblogging STATIC logger.cc)
 
-target_include_directories(liblogging PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(liblogging PUBLIC ${UTILS_SRC_ROOT})
 
 if(UTILS_BACKWARD_AVAILABLE AND BACKWARD_SOURCE_DIR)
   target_include_directories(liblogging PUBLIC ${BACKWARD_SOURCE_DIR})

@@ -1,6 +1,6 @@
 add_library(libbasics INTERFACE)
 
-target_include_directories(libbasics INTERFACE ${CMAKE_SOURCE_DIR}/src/basic)
+target_include_directories(libbasics INTERFACE ${UTILS_SRC_ROOT}/basic)
 
 add_library(${PROJECT_NAME}::basics ALIAS libbasics)
 

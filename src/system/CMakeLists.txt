@@ -1,6 +1,6 @@
 add_library(libsystem STATIC popen_wrapper.cc system_info.cc)
 
-target_include_directories(libsystem PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(libsystem PUBLIC ${UTILS_SRC_ROOT})
 
 target_link_libraries(libsystem PUBLIC libbasics)
 

@@ -1,20 +1,17 @@
 #ifndef UTILS_QOS_QOS_STATS_H
 #define UTILS_QOS_QOS_STATS_H
 
+#include "i_qos_item.h"
+
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <string>
-
-#include "i_qos_item.h"
 
 namespace utils {
 namespace qos {
 
-// ---------------------------------------------------------------------------
 // PerPriorityStats — counters for a single priority level.
-// ---------------------------------------------------------------------------
 struct PerPriorityStats {
   std::atomic<uint64_t> enqueued{0};
   std::atomic<uint64_t> dequeued{0};
@@ -27,9 +24,7 @@ struct PerPriorityStats {
   void Reset();
 };
 
-// ---------------------------------------------------------------------------
 // QosStats — aggregate statistics across all priority levels.
-// ---------------------------------------------------------------------------
 class QosStats {
 public:
   PerPriorityStats &At(Priority p);
@@ -42,7 +37,7 @@ public:
   uint64_t TotalDropped() const;
   uint64_t TotalExpired() const;
 
-  // Average end-to-end latency in microseconds (0 if none executed).
+  // Average end-to-end latency in microseconds (0.0 if none executed).
   double AverageLatencyUs() const;
 
   void Reset();

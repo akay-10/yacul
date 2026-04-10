@@ -1,6 +1,5 @@
 #include "qos_stats.h"
 
-#include <numeric>
 #include <sstream>
 
 using namespace std;
@@ -123,6 +122,8 @@ string QosStats::ToString() const {
   oss << "}";
   return oss.str();
 }
+
+// ---------------------------------------------------------------------------
 
 } // namespace qos
 } // namespace utils

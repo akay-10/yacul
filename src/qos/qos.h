@@ -1,66 +1,58 @@
 #ifndef UTILS_QOS_QOS_H
 #define UTILS_QOS_QOS_H
 
-#include <array>
-#include <atomic>
-#include <chrono>
-#include <cstddef>
-#include <cstdint>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <string>
-#include <thread>
-#include <vector>
-
 #include "basic/basic.h"
 #include "concurrency/os_lockless_queue.h"
 #include "i_qos_item.h"
 #include "qos_stats.h"
 #include "token_bucket.h"
 
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
 namespace utils {
 namespace qos {
 
-// ---------------------------------------------------------------------------
-// QosConfig — all tunables for a QOS instance.
-// ---------------------------------------------------------------------------
 struct QosConfig {
-  // --- Capacity ---
-  // Maximum items per priority queue (0 = unlimited).
+  // Maximum items per priority queue, 0 means unlimited.
   size_t max_queue_depth{4096};
 
-  // Total items across all queues (0 = unlimited).
+  // Total items across all queues, 0 means unlimited.
   size_t max_total_depth{0};
 
-  // --- Rate limiting (token bucket per priority, 0 = disabled) ---
-  // tokens/second for each priority level (index == Priority numeric value).
+  // Rate limiting i.e. token bucket per priority, 0.0 means disabled.
+  // rate=tokens/second for each priority level.
   std::array<double, kNumPriorityLevels> rate_limit_per_priority{
-      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+    {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
 
-  // Burst capacity multiplier (bucket size = rate × burst_multiplier).
+  // Burst capacity multiplier, bucket_size = rate × burst_multiplier.
   double burst_multiplier{2.0};
 
-  // Global rate limit across all priorities (0 = disabled).
+  // Global rate limit across all priorities, 0.0 means disabled.
   double global_rate_limit{0.0};
   double global_burst_multiplier{2.0};
 
-  // --- Scheduling ---
-  // Weighted round-robin quanta: how many items to drain per priority level
-  // before moving to the next lower level.
+  // Weighted round-robin quanta, i.e number of items to drain per priority
+  // level before moving to the next lower level.
   std::array<size_t, kNumPriorityLevels> wrr_quanta{{1, 2, 4, 8, 16, 32}};
 
   // If true, deadline-aware scheduling is applied when items carry deadlines.
   bool deadline_scheduling{true};
 
-  // --- Consumer threads ---
+  // Consumer threads.
   size_t num_consumer_threads{1};
 
-  // --- Timeouts ---
-  // Items older than this are considered expired (0 = no expiry).
+  // Items older than this are considered expired, 0 means no expiry.
   std::chrono::milliseconds item_ttl{std::chrono::milliseconds{0}};
 
-  // --- Overflow policy ---
+  // Overflow policy.
   enum class OverflowPolicy {
     kDrop,       // silently drop new items
     kDropOldest, // evict oldest item in the full queue
@@ -68,17 +60,14 @@ struct QosConfig {
   };
   OverflowPolicy overflow_policy{OverflowPolicy::kDrop};
 
-  // --- Back-pressure ---
   // Fraction [0,1] of max_queue_depth at which back-pressure is signalled.
   double backpressure_threshold{0.8};
 };
 
 // ---------------------------------------------------------------------------
-// QOS — production-grade Quality-of-Service queue manager.
-//
+
 // Thread safety: all public methods are safe to call concurrently from
-// arbitrary threads.  Internally backed by moodycamel::ConcurrentQueue.
-// ---------------------------------------------------------------------------
+// arbitrary threads. Internally backed by moodycamel::ConcurrentQueue.
 class QOS {
 public:
   // Construct with default configuration.
@@ -94,9 +83,7 @@ public:
   DISALLOW_COPY_AND_ASSIGN(QOS);
   DISALLOW_MOVE_AND_ASSIGN(QOS);
 
-  // -------------------------------------------------------------------------
   // Lifecycle
-  // -------------------------------------------------------------------------
 
   // Start background consumer thread(s).  Must be called before Dequeue/Run.
   void Start();
@@ -113,45 +100,37 @@ public:
   bool IsRunning() const;
   bool IsPaused() const;
 
-  // -------------------------------------------------------------------------
   // Submission
-  // -------------------------------------------------------------------------
 
   // Enqueue an item at its embedded priority.
   // Returns true on success, false if rejected (rate-limited / queue full).
-  bool Enqueue(IQosItemPtr item);
+  bool Enqueue(IQosItem::Ptr item);
 
   // Enqueue overriding the item's own priority field.
-  bool Enqueue(IQosItemPtr item, Priority priority);
+  bool Enqueue(IQosItem::Ptr item, Priority priority);
 
   // Enqueue with an explicit deadline.
-  bool Enqueue(IQosItemPtr item, Priority priority,
+  bool Enqueue(IQosItem::Ptr item, Priority priority,
                std::chrono::steady_clock::time_point deadline);
 
   // Convenience: enqueue a plain callable wrapped in a FunctionItem.
   bool EnqueueTask(std::function<void()> fn,
                    Priority priority = Priority::kNormal, std::string tag = {});
 
-  // -------------------------------------------------------------------------
   // Dequeue (manual consumer mode — consumers must be stopped)
-  // -------------------------------------------------------------------------
 
   // Attempt to dequeue the highest-priority non-expired item.
   // Returns nullptr if all queues are empty.
-  IQosItemPtr TryDequeue();
+  IQosItem::Ptr TryDequeue();
 
   // Bulk dequeue up to `max_items`; returns actual count.
-  size_t TryDequeueBulk(std::vector<IQosItemPtr> &out, size_t max_items);
+  size_t TryDequeueBulk(std::vector<IQosItem::Ptr> &out, size_t max_items);
 
-  // -------------------------------------------------------------------------
   // Observers
-  // -------------------------------------------------------------------------
-  void AddObserver(std::shared_ptr<IQosObserver> observer);
-  void RemoveObserver(std::shared_ptr<IQosObserver> observer);
+  void AddObserver(IQosObserver::Ptr observer);
+  void RemoveObserver(IQosObserver::Ptr observer);
 
-  // -------------------------------------------------------------------------
   // Introspection
-  // -------------------------------------------------------------------------
 
   // Approximate total items across all queues.
   size_t SizeApprox() const;
@@ -169,13 +148,9 @@ public:
   const QosConfig &Config() const;
 
 private:
-  // -------------------------------------------------------------------------
-  // Internal types
-  // -------------------------------------------------------------------------
-
   // Per-priority sub-queue bundle.
   struct PriorityQueue {
-    moodycamel::ConcurrentQueue<IQosItemPtr> queue;
+    moodycamel::ConcurrentQueue<IQosItem::Ptr> queue;
     std::unique_ptr<TokenBucket> rate_limiter; // may be nullptr
     std::atomic<size_t> depth{0};
     size_t wrr_quota{1};
@@ -183,15 +158,13 @@ private:
     explicit PriorityQueue(size_t initial_capacity, size_t wrr_quota_);
   };
 
-  // -------------------------------------------------------------------------
   // Internal helpers
-  // -------------------------------------------------------------------------
 
-  bool EnqueueInternal(IQosItemPtr item, Priority priority,
+  bool EnqueueInternal(IQosItem::Ptr item, Priority priority,
                        std::chrono::steady_clock::time_point deadline,
                        bool has_deadline);
 
-  IQosItemPtr DequeueInternal();
+  IQosItem::Ptr DequeueInternal();
 
   // Worker loop executed by each consumer thread.
   void ConsumerLoop();
@@ -204,11 +177,9 @@ private:
   void NotifyExpired(const QosMetadata &meta);
 
   bool CheckRateLimit(PriorityQueue &pq, double cost);
-  bool IsExpired(const IQosItemPtr &item) const;
+  bool IsExpired(const IQosItem::Ptr &item) const;
 
-  // -------------------------------------------------------------------------
   // Members
-  // -------------------------------------------------------------------------
 
   QosConfig config_;
 
@@ -231,7 +202,7 @@ private:
 
   // Observer list (copy-on-write via snapshot approach).
   mutable std::mutex observers_mu_;
-  std::vector<std::shared_ptr<IQosObserver>> observers_;
+  std::vector<IQosObserver::Ptr> observers_;
 
   QosStats stats_;
 };

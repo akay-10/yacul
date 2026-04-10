@@ -1,11 +1,11 @@
 #include "qos.h"
 
+#include "qos/i_qos_item.h"
+
 #include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <functional>
-#include <sstream>
-#include <stdexcept>
 #include <thread>
 
 using namespace std;
@@ -13,12 +13,9 @@ using namespace std;
 namespace utils {
 namespace qos {
 
-// ===========================================================================
-// FunctionItem — wraps a plain std::function<void()> as an IQosItem.
-// ===========================================================================
-
 namespace {
 
+// FunctionItem, wraps a plain std::function<void()> as an IQosItem.
 class FunctionItem final : public IQosItem {
 public:
   explicit FunctionItem(function<void()> fn, string tag) : fn_(move(fn)) {
@@ -40,16 +37,12 @@ private:
 
 } // namespace
 
-// ===========================================================================
-// PriorityQueue
-// ===========================================================================
+// ---------------------------------------------------------------------------
 
 QOS::PriorityQueue::PriorityQueue(size_t initial_capacity, size_t wrr_quota_)
-    : queue(initial_capacity), wrr_quota(wrr_quota_) {}
+  : queue(initial_capacity), wrr_quota(wrr_quota_) {}
 
-// ===========================================================================
-// QOS
-// ===========================================================================
+// ---------------------------------------------------------------------------
 
 QOS::QOS() : QOS(QosConfig{}) {}
 
@@ -57,7 +50,7 @@ QOS::QOS() : QOS(QosConfig{}) {}
 
 QOS::QOS(QosConfig config) : config_(move(config)) {
   size_t initial_cap =
-      (config_.max_queue_depth > 0) ? config_.max_queue_depth : 256;
+    (config_.max_queue_depth > 0) ? config_.max_queue_depth : 256;
 
   for (size_t i = 0; i < kNumPriorityLevels; ++i) {
     size_t quota = config_.wrr_quanta[i];
@@ -73,7 +66,7 @@ QOS::QOS(QosConfig config) : config_(move(config)) {
   if (config_.global_rate_limit > 0.0) {
     double cap = config_.global_rate_limit * config_.global_burst_multiplier;
     global_rate_limiter_ =
-        make_unique<TokenBucket>(config_.global_rate_limit, cap);
+      make_unique<TokenBucket>(config_.global_rate_limit, cap);
   }
 }
 
@@ -81,8 +74,6 @@ QOS::QOS(QosConfig config) : config_(move(config)) {
 
 QOS::~QOS() { Stop(); }
 
-// ---------------------------------------------------------------------------
-// Lifecycle
 // ---------------------------------------------------------------------------
 
 void QOS::Start() {
@@ -138,10 +129,8 @@ bool QOS::IsRunning() const { return running_.load(memory_order_acquire); }
 bool QOS::IsPaused() const { return paused_.load(memory_order_acquire); }
 
 // ---------------------------------------------------------------------------
-// Submission
-// ---------------------------------------------------------------------------
 
-bool QOS::Enqueue(IQosItemPtr item) {
+bool QOS::Enqueue(IQosItem::Ptr item) {
   if (!item)
     return false;
   Priority p = item->metadata().priority;
@@ -151,7 +140,7 @@ bool QOS::Enqueue(IQosItemPtr item) {
 
 // ---------------------------------------------------------------------------
 
-bool QOS::Enqueue(IQosItemPtr item, Priority priority) {
+bool QOS::Enqueue(IQosItem::Ptr item, Priority priority) {
   if (!item)
     return false;
   item->metadata().priority = priority;
@@ -161,7 +150,7 @@ bool QOS::Enqueue(IQosItemPtr item, Priority priority) {
 
 // ---------------------------------------------------------------------------
 
-bool QOS::Enqueue(IQosItemPtr item, Priority priority,
+bool QOS::Enqueue(IQosItem::Ptr item, Priority priority,
                   chrono::steady_clock::time_point deadline) {
   if (!item)
     return false;
@@ -180,7 +169,7 @@ bool QOS::EnqueueTask(function<void()> fn, Priority priority, string tag) {
 
 // ---------------------------------------------------------------------------
 
-bool QOS::EnqueueInternal(IQosItemPtr item, Priority priority,
+bool QOS::EnqueueInternal(IQosItem::Ptr item, Priority priority,
                           chrono::steady_clock::time_point deadline,
                           bool has_deadline) {
   auto &pq = *queues_[static_cast<size_t>(priority)];
@@ -195,7 +184,7 @@ bool QOS::EnqueueInternal(IQosItemPtr item, Priority priority,
     }
     // kDropOldest: try to evict one item.
     if (config_.overflow_policy == QosConfig::OverflowPolicy::kDropOldest) {
-      IQosItemPtr evicted;
+      IQosItem::Ptr evicted;
       if (pq.queue.try_dequeue(evicted)) {
         pq.depth.fetch_sub(1, memory_order_relaxed);
         total_depth_.fetch_sub(1, memory_order_relaxed);
@@ -253,17 +242,15 @@ bool QOS::EnqueueInternal(IQosItemPtr item, Priority priority,
 }
 
 // ---------------------------------------------------------------------------
-// Dequeue (manual mode)
-// ---------------------------------------------------------------------------
 
-IQosItemPtr QOS::TryDequeue() { return DequeueInternal(); }
+IQosItem::Ptr QOS::TryDequeue() { return DequeueInternal(); }
 
 // ---------------------------------------------------------------------------
 
-size_t QOS::TryDequeueBulk(vector<IQosItemPtr> &out, size_t max_items) {
+size_t QOS::TryDequeueBulk(vector<IQosItem::Ptr> &out, size_t max_items) {
   size_t count = 0;
   for (size_t i = 0; i < max_items; ++i) {
-    IQosItemPtr item = DequeueInternal();
+    IQosItem::Ptr item = DequeueInternal();
     if (!item)
       break;
     out.push_back(move(item));
@@ -273,13 +260,11 @@ size_t QOS::TryDequeueBulk(vector<IQosItemPtr> &out, size_t max_items) {
 }
 
 // ---------------------------------------------------------------------------
-// Internal scheduling (WRR + deadline awareness)
-// ---------------------------------------------------------------------------
 
-IQosItemPtr QOS::DequeueInternal() {
-  // Scan from highest priority to lowest using WRR quanta.
-  // If deadline_scheduling is on, we do a quick peek-and-compare across
-  // the top 2 queues for imminent deadlines.
+IQosItem::Ptr QOS::DequeueInternal() {
+  // Scan from highest priority to lowest using WRR quanta. If
+  // deadline_scheduling is on, we do a quick peek-and-compare across the top 2
+  // queues for imminent deadlines.
 
   for (int level = static_cast<int>(kNumPriorityLevels) - 1; level >= 0;
        --level) {
@@ -287,20 +272,20 @@ IQosItemPtr QOS::DequeueInternal() {
     size_t quota = pq.wrr_quota;
 
     for (size_t q = 0; q < quota; ++q) {
-      IQosItemPtr item;
+      IQosItem::Ptr item;
       if (!pq.queue.try_dequeue(item))
         break;
 
       pq.depth.fetch_sub(1, memory_order_relaxed);
       total_depth_.fetch_sub(1, memory_order_relaxed);
       stats_.At(static_cast<Priority>(level))
-          .dequeued.fetch_add(1, memory_order_relaxed);
+        .dequeued.fetch_add(1, memory_order_relaxed);
 
       // TTL / expiry check.
       if (IsExpired(item)) {
         NotifyExpired(item->metadata());
         stats_.At(static_cast<Priority>(level))
-            .expired.fetch_add(1, memory_order_relaxed);
+          .expired.fetch_add(1, memory_order_relaxed);
         continue; // Discard and try next.
       }
 
@@ -312,8 +297,6 @@ IQosItemPtr QOS::DequeueInternal() {
 }
 
 // ---------------------------------------------------------------------------
-// Consumer loop
-// ---------------------------------------------------------------------------
 
 void QOS::ConsumerLoop() {
   while (!stop_requested_.load(memory_order_acquire)) {
@@ -322,7 +305,7 @@ void QOS::ConsumerLoop() {
       continue;
     }
 
-    IQosItemPtr item = DequeueInternal();
+    IQosItem::Ptr item = DequeueInternal();
     if (!item) {
       // Back-off to avoid busy-spinning on an empty queue.
       this_thread::sleep_for(chrono::microseconds(100));
@@ -332,55 +315,51 @@ void QOS::ConsumerLoop() {
     auto t0 = chrono::steady_clock::now();
     item->Execute();
     auto latency = chrono::duration_cast<chrono::microseconds>(
-        chrono::steady_clock::now() - t0);
+      chrono::steady_clock::now() - t0);
 
     Priority p = item->metadata().priority;
     stats_.At(p).executed.fetch_add(1, memory_order_relaxed);
     stats_.At(p).total_latency_us.fetch_add(
-        static_cast<uint64_t>(latency.count()), memory_order_relaxed);
+      static_cast<uint64_t>(latency.count()), memory_order_relaxed);
 
     NotifyExecuted(item->metadata(), latency);
   }
 
   // Drain remaining items after stop is requested.
-  IQosItemPtr item;
+  IQosItem::Ptr item;
   while ((item = DequeueInternal()) != nullptr) {
     auto t0 = chrono::steady_clock::now();
     item->Execute();
     auto latency = chrono::duration_cast<chrono::microseconds>(
-        chrono::steady_clock::now() - t0);
+      chrono::steady_clock::now() - t0);
 
     Priority p = item->metadata().priority;
     stats_.At(p).executed.fetch_add(1, memory_order_relaxed);
     stats_.At(p).total_latency_us.fetch_add(
-        static_cast<uint64_t>(latency.count()), memory_order_relaxed);
+      static_cast<uint64_t>(latency.count()), memory_order_relaxed);
     NotifyExecuted(item->metadata(), latency);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Observers
-// ---------------------------------------------------------------------------
 
-void QOS::AddObserver(shared_ptr<IQosObserver> observer) {
+void QOS::AddObserver(IQosObserver::Ptr observer) {
   lock_guard<mutex> lk(observers_mu_);
   observers_.push_back(move(observer));
 }
 
 // ---------------------------------------------------------------------------
 
-void QOS::RemoveObserver(shared_ptr<IQosObserver> observer) {
+void QOS::RemoveObserver(IQosObserver::Ptr observer) {
   lock_guard<mutex> lk(observers_mu_);
   observers_.erase(remove(observers_.begin(), observers_.end(), observer),
                    observers_.end());
 }
 
 // ---------------------------------------------------------------------------
-// Notification helpers (snapshot observer list to avoid lock-hold during CB)
-// ---------------------------------------------------------------------------
 
 void QOS::NotifyEnqueued(const QosMetadata &meta) {
-  vector<shared_ptr<IQosObserver>> snapshot;
+  vector<IQosObserver::Ptr> snapshot;
   {
     lock_guard<mutex> lk(observers_mu_);
     snapshot = observers_;
@@ -392,7 +371,7 @@ void QOS::NotifyEnqueued(const QosMetadata &meta) {
 // ---------------------------------------------------------------------------
 
 void QOS::NotifyDequeued(const QosMetadata &meta) {
-  vector<shared_ptr<IQosObserver>> snapshot;
+  vector<IQosObserver::Ptr> snapshot;
   {
     lock_guard<mutex> lk(observers_mu_);
     snapshot = observers_;
@@ -405,7 +384,7 @@ void QOS::NotifyDequeued(const QosMetadata &meta) {
 
 void QOS::NotifyExecuted(const QosMetadata &meta,
                          chrono::microseconds latency) {
-  vector<shared_ptr<IQosObserver>> snapshot;
+  vector<IQosObserver::Ptr> snapshot;
   {
     lock_guard<mutex> lk(observers_mu_);
     snapshot = observers_;
@@ -417,7 +396,7 @@ void QOS::NotifyExecuted(const QosMetadata &meta,
 // ---------------------------------------------------------------------------
 
 void QOS::NotifyDropped(const QosMetadata &meta) {
-  vector<shared_ptr<IQosObserver>> snapshot;
+  vector<IQosObserver::Ptr> snapshot;
   {
     lock_guard<mutex> lk(observers_mu_);
     snapshot = observers_;
@@ -429,7 +408,7 @@ void QOS::NotifyDropped(const QosMetadata &meta) {
 // ---------------------------------------------------------------------------
 
 void QOS::NotifyExpired(const QosMetadata &meta) {
-  vector<shared_ptr<IQosObserver>> snapshot;
+  vector<IQosObserver::Ptr> snapshot;
   {
     lock_guard<mutex> lk(observers_mu_);
     snapshot = observers_;
@@ -438,8 +417,6 @@ void QOS::NotifyExpired(const QosMetadata &meta) {
     obs->OnExpired(meta);
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
 // ---------------------------------------------------------------------------
 
 bool QOS::CheckRateLimit(PriorityQueue &pq, double cost) {
@@ -450,7 +427,7 @@ bool QOS::CheckRateLimit(PriorityQueue &pq, double cost) {
 
 // ---------------------------------------------------------------------------
 
-bool QOS::IsExpired(const IQosItemPtr &item) const {
+bool QOS::IsExpired(const IQosItem::Ptr &item) const {
   if (item->IsExpired())
     return true;
 
@@ -464,7 +441,7 @@ bool QOS::IsExpired(const IQosItemPtr &item) const {
   // TTL check.
   if (config_.item_ttl.count() > 0) {
     auto age = chrono::duration_cast<chrono::milliseconds>(
-        chrono::steady_clock::now() - meta.enqueue_time);
+      chrono::steady_clock::now() - meta.enqueue_time);
     if (age >= config_.item_ttl)
       return true;
   }
@@ -472,8 +449,6 @@ bool QOS::IsExpired(const IQosItemPtr &item) const {
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Introspection
 // ---------------------------------------------------------------------------
 
 size_t QOS::SizeApprox() const {
@@ -484,7 +459,7 @@ size_t QOS::SizeApprox() const {
 
 size_t QOS::SizeApprox(Priority priority) const {
   return queues_[static_cast<size_t>(priority)]->depth.load(
-      memory_order_relaxed);
+    memory_order_relaxed);
 }
 
 // ---------------------------------------------------------------------------
@@ -497,8 +472,8 @@ bool QOS::IsUnderBackPressure() const {
   double total_capacity = static_cast<double>(config_.max_queue_depth);
   for (size_t i = 0; i < kNumPriorityLevels; ++i) {
     double fill =
-        static_cast<double>(queues_[i]->depth.load(memory_order_relaxed)) /
-        total_capacity;
+      static_cast<double>(queues_[i]->depth.load(memory_order_relaxed)) /
+      total_capacity;
     if (fill >= config_.backpressure_threshold)
       return true;
   }
@@ -515,6 +490,8 @@ void QOS::ResetStats() { stats_.Reset(); }
 // ---------------------------------------------------------------------------
 
 const QosConfig &QOS::Config() const { return config_; }
+
+// ---------------------------------------------------------------------------
 
 } // namespace qos
 } // namespace utils

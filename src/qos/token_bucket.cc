@@ -4,86 +4,87 @@
 #include <chrono>
 
 using namespace std;
+using namespace utils::concurrency;
 
 namespace utils {
 namespace qos {
 
 // ---------------------------------------------------------------------------
 
-TokenBucket::TokenBucket(double rate, double capacity)
-    : rate_(rate), capacity_(capacity), tokens_(capacity),
-      last_refill_ns_(chrono::duration_cast<chrono::nanoseconds>(
-                          chrono::steady_clock::now().time_since_epoch())
-                          .count()) {}
+static int64_t NowNs() {
+  return chrono::duration_cast<chrono::nanoseconds>(
+           chrono::steady_clock::now().time_since_epoch())
+    .count();
+}
 
 // ---------------------------------------------------------------------------
 
-void TokenBucket::RefillInternal() const {
-  int64_t now_ns = chrono::duration_cast<chrono::nanoseconds>(
-                       chrono::steady_clock::now().time_since_epoch())
-                       .count();
+TokenBucket::TokenBucket(double rate, double capacity)
+  : rate_(rate), capacity_(capacity), tokens_(capacity),
+    last_refill_ns_(NowNs()) {}
 
-  int64_t prev_ns = last_refill_ns_.load(memory_order_relaxed);
-  double elapsed_s = static_cast<double>(now_ns - prev_ns) * 1e-9;
+// ---------------------------------------------------------------------------
+
+void TokenBucket::RefillLocked() {
+  int64_t now_ns = NowNs();
+
+  double elapsed_s = static_cast<double>(now_ns - last_refill_ns_) * 1e-9;
+
+  // Guard against clock anomalies (NTP steps, monotonic hiccups).
   if (elapsed_s <= 0.0)
     return;
 
-  // Try to claim the time window; another thread may win — that is fine,
-  // the token add is still monotone-safe via fetch_add-like CAS loop.
-  if (!last_refill_ns_.compare_exchange_weak(
-          prev_ns, now_ns, memory_order_relaxed, memory_order_relaxed)) {
-    return; // Another thread is refilling; skip to avoid double-add.
-  }
+  // Cap elapsed time to at most one full bucket to prevent a huge credit
+  // accumulation when the bucket has been idle for a long time.
+  elapsed_s = min(elapsed_s, capacity_ / rate_);
 
-  double added = elapsed_s * rate_;
-  double current = tokens_.load(memory_order_relaxed);
-  double updated = min(current + added, capacity_);
-  tokens_.store(updated, memory_order_relaxed);
+  tokens_ = min(tokens_ + elapsed_s * rate_, capacity_);
+  last_refill_ns_ = now_ns;
 }
 
 // ---------------------------------------------------------------------------
 
 bool TokenBucket::TryConsume(double tokens) {
-  RefillInternal();
+  if (tokens <= 0.0)
+    return true;
 
-  double current = tokens_.load(memory_order_relaxed);
-  while (current >= tokens) {
-    if (tokens_.compare_exchange_weak(current, current - tokens,
-                                      memory_order_acquire,
-                                      memory_order_relaxed)) {
-      return true;
-    }
-  }
-  return false;
+  lock_guard<Spinlock> lk(mu_);
+  RefillLocked();
+
+  if (tokens_ < tokens)
+    return false;
+
+  tokens_ -= tokens;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
 
 void TokenBucket::Refill(double tokens) {
-  double current = tokens_.load(memory_order_relaxed);
-  double updated;
-  do {
-    updated = min(current + tokens, capacity_);
-  } while (!tokens_.compare_exchange_weak(
-      current, updated, memory_order_relaxed, memory_order_relaxed));
+  if (tokens <= 0.0)
+    return;
+
+  lock_guard<Spinlock> lk(mu_);
+  tokens_ = min(tokens_ + tokens, capacity_);
 }
 
 // ---------------------------------------------------------------------------
 
 void TokenBucket::Reset() {
-  tokens_.store(capacity_, memory_order_relaxed);
-  last_refill_ns_.store(chrono::duration_cast<chrono::nanoseconds>(
-                            chrono::steady_clock::now().time_since_epoch())
-                            .count(),
-                        memory_order_relaxed);
+  lock_guard<Spinlock> lk(mu_);
+  tokens_ = capacity_;
+  last_refill_ns_ = NowNs();
 }
 
 // ---------------------------------------------------------------------------
 
-double TokenBucket::CurrentTokens() const {
-  RefillInternal();
-  return tokens_.load(memory_order_relaxed);
+double TokenBucket::CurrentTokens() {
+  lock_guard<Spinlock> lk(mu_);
+  RefillLocked();
+  return tokens_;
 }
+
+// ---------------------------------------------------------------------------
 
 } // namespace qos
 } // namespace utils

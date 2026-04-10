@@ -4,41 +4,39 @@
 #include "basic/basic.h"
 
 #include <functional>
-#include <memory> // shared_ptr
 #include <mutex>
 #include <type_traits>
 #include <utility>
 
 namespace utils {
 namespace misc {
-
-// =============================================================================
-// Concurrency policies
-//
-// Pass one of these as the template argument to ScopedExec<Policy> to select
-// the desired thread-safety behaviour at compile time.  There is zero runtime
-// overhead for UnsafePolicy — the mutex member is not present and every lock
-// call compiles away entirely via empty-base optimisation and if constexpr.
-// =============================================================================
-
-// All public methods on a single instance are safe to call concurrently from
-// multiple threads.  The functor is guaranteed to execute at most once
-// regardless of how many threads race on invoke(), release(), reset(), or
-// the destructor simultaneously.
+/*
+ * Concurrency policies
+ *
+ * Pass one of these as the template argument to ScopedExec<Policy> to select
+ * the desired thread safety behaviour at compile time. There is zero runtime
+ * overhead for UnsafePolicy — the mutex member is not present and every lock
+ * call compiles away entirely via empty base optimisation and if constexpr.
+ * All public methods on a single instance are safe to call concurrently from
+ * multiple threads. The functor is guaranteed to execute at most once
+ * regardless of how many threads race on invoke(), release(), reset(), or
+ * the destructor simultaneously.
+ */
 struct ThreadSafePolicy {};
 
-// No locking is performed.  The instance must not be shared across threads
-// without external synchronisation.  Offers maximum performance for
-// single-threaded or already-synchronised use cases.
+/*
+ * No locking is performed. The instance must not be shared across threads
+ * without external synchronisation. Offers maximum performance for
+ * single threaded or already synchronised use cases.
+ */
 struct UnsafePolicy {};
 
-// =============================================================================
-// Internal implementation detail — not part of the public API.
-// =============================================================================
+// ---------------------------------------------------------------------------
+
 namespace scoped_exec_internal {
 
 // MutexBase<ThreadSafePolicy> owns a std::mutex.
-// MutexBase<UnsafePolicy>     is an empty struct — zero size overhead (EBO).
+// MutexBase<UnsafePolicy> is an empty struct; zero size overhead (EBO).
 template <typename Policy> struct MutexBase;
 
 template <> struct MutexBase<ThreadSafePolicy> {
@@ -47,9 +45,9 @@ template <> struct MutexBase<ThreadSafePolicy> {
 
 template <> struct MutexBase<UnsafePolicy> {};
 
-// NullLockGuard satisfies the LockGuard concept with a no-op body.
-// Used by UnsafePolicy so that all locking call-sites in ScopedExec compile
-// to nothing without requiring any source-level conditionals at those sites.
+// NullLockGuard satisfies the LockGuard concept with a no-op body. Used by
+// UnsafePolicy so that all locking call-sites in ScopedExec compile to nothing
+// without requiring any source-level conditionals at those sites.
 struct NullLockGuard {
   explicit NullLockGuard(const NullLockGuard &) = delete;
   explicit NullLockGuard() = default;
@@ -68,107 +66,106 @@ template <> struct LockGuardSelector<UnsafePolicy> {
 
 } // namespace scoped_exec_internal
 
-// =============================================================================
-// ScopedExec<Policy>
-//
-// A RAII guard that executes a registered functor exactly once when the
-// object is destroyed (or explicitly invoked).  The executor can be
-// disarmed via release() so the functor is never called.
-//
-// Select concurrency behaviour via the Policy template parameter:
-//
-//   ScopedExec<ThreadSafePolicy>  — fully thread-safe (see below)
-//   ScopedExec<UnsafePolicy>      — no locking; single-thread / external sync
-//
-// Or use the convenience aliases at the bottom of this file:
-//
-//   ScopedExecTS      — thread-safe variant
-//   ScopedExecUnsafe  — unsafe (no-lock) variant
-//
-// -----------------------------------------------------------------------------
-// ThreadSafePolicy guarantees
-// -----------------------------------------------------------------------------
-// All public methods are safe to call concurrently from multiple threads.
-// The functor is guaranteed to execute at most once regardless of races on
-// invoke(), release(), reset(), or the destructor.
-//
-// Functor execution is performed *outside* the internal mutex to prevent
-// deadlock when the functor itself calls back into the same ScopedExec
-// instance (e.g. to re-arm it via reset()).  As a consequence, operator bool()
-// will already return false before the functor has finished running — callers
-// must not use armed-state as a proxy for "functor has completed".
-//
-// Move construction locks only the source (this is not yet visible).
-// Move assignment uses std::lock() on both mutexes to prevent deadlock.
-//
-// -----------------------------------------------------------------------------
-// UnsafePolicy behaviour
-// -----------------------------------------------------------------------------
-// Identical API and semantics; all mutex operations compile to nothing.
-// The mutex member is absent (EBO), so sizeof(ScopedExec<UnsafePolicy>) is
-// strictly smaller than sizeof(ScopedExec<ThreadSafePolicy>).
-//
-// -----------------------------------------------------------------------------
-// Note on std::function
-// -----------------------------------------------------------------------------
-// std::function requires its stored target to be copy-constructible.
-// Lambdas capturing move-only types (e.g. std::unique_ptr) are incompatible.
-// Wrap such data in std::shared_ptr to retain shared ownership inside the
-// callable.
-// =============================================================================
+// ---------------------------------------------------------------------------
+
+/*
+ * ScopedExec<Policy>
+ *
+ * A RAII guard that executes a registered functor exactly once when the object
+ * is destroyed (or explicitly invoked).  The executor can be disarmed via
+ * release() so the functor is never called.
+ *
+ * Select concurrency behaviour via the Policy template parameter:
+ *
+ *   ScopedExec<ThreadSafePolicy>  — fully thread-safe (see below)
+ *   ScopedExec<UnsafePolicy>      — no locking; single-thread / external sync
+ *
+ * Or use the convenience aliases at the bottom of this file:
+ *
+ *   ScopedExecTS      — thread-safe variant
+ *   ScopedExecUnsafe  — unsafe (no-lock) variant
+ *
+ * ---------------------------------------------------------------------------
+ * ThreadSafePolicy guarantees
+ * ---------------------------------------------------------------------------
+ * All public methods are safe to call concurrently from multiple threads.
+ * The functor is guaranteed to execute at most once regardless of races on
+ * invoke(), release(), reset(), or the destructor.
+ *
+ * Functor execution is performed 'outside' the internal mutex to prevent
+ * deadlock when the functor itself calls back into the same ScopedExec
+ * instance (e.g. to re-arm it via reset()). As a consequence, operator bool()
+ * will already return false before the functor has finished running — callers
+ * must not use armed-state as a proxy for "functor has completed".
+ *
+ * Move construction locks only the source (this is not yet visible).
+ * Move assignment uses std::lock() on both mutexes to prevent deadlock.
+ *
+ * ---------------------------------------------------------------------------
+ * UnsafePolicy behaviour
+ * ---------------------------------------------------------------------------
+ * Identical API and semantics; all mutex operations compile to nothing.
+ * The mutex member is absent (EBO), so sizeof(ScopedExec<UnsafePolicy>) is
+ * strictly smaller than sizeof(ScopedExec<ThreadSafePolicy>).
+ *
+ * ---------------------------------------------------------------------------
+ * Note on std::function
+ * ---------------------------------------------------------------------------
+ * std::function requires its stored target to be copy-constructible.
+ * Lambdas capturing move-only types (e.g. std::unique_ptr) are incompatible.
+ * Wrap such data in std::shared_ptr to retain shared ownership inside the
+ * callable.
+ *
+ */
 template <typename Policy = UnsafePolicy>
 class ScopedExec : private scoped_exec_internal::MutexBase<Policy> {
   static_assert(std::is_same_v<Policy, ThreadSafePolicy> ||
-                    std::is_same_v<Policy, UnsafePolicy>,
+                  std::is_same_v<Policy, UnsafePolicy>,
                 "Policy must be ThreadSafePolicy or UnsafePolicy");
 
   using LockGuard =
-      typename scoped_exec_internal::LockGuardSelector<Policy>::Type;
+    typename scoped_exec_internal::LockGuardSelector<Policy>::Type;
 
 public:
   // Constructs a disarmed (no-op) executor.
   ScopedExec() = default;
 
   // Constructs an armed executor from any callable (lambda, function pointer,
-  // std::function, functor).  The executor is disarmed if fn is null/empty.
+  // std::function, functor). The executor is disarmed if fn is null/empty.
   template <typename Fn, typename = std::enable_if_t<
-                             std::is_invocable_r_v<void, std::decay_t<Fn>>>>
+                           std::is_invocable_r_v<void, std::decay_t<Fn>>>>
   explicit ScopedExec(Fn &&fn)
-      : fn_(std::forward<Fn>(fn)), armed_(fn_ != nullptr) {}
+    : fn_(std::forward<Fn>(fn)), armed_(fn_ != nullptr) {}
 
   // Move constructor: for ThreadSafePolicy, locks the source to guard against
-  // concurrent access.  For UnsafePolicy, performs a direct move.
+  // concurrent access. For UnsafePolicy, performs a direct move.
   ScopedExec(ScopedExec &&other) { MoveConstruct(std::move(other)); }
 
   // Move assignment: for ThreadSafePolicy, locks both instances (deadlock-safe
   // via std::lock) and runs any currently armed functor on *this before taking
-  // ownership.  For UnsafePolicy, runs the current functor then moves directly.
+  // ownership. For UnsafePolicy, runs the current functor then moves directly.
   ScopedExec &operator=(ScopedExec &&other);
 
-  // Deleted copy operations — ownership of the functor is unique.
+  // Deleted copy operations; ownership of the functor is unique.
   DISALLOW_COPY_AND_ASSIGN(ScopedExec);
 
-  // Destructor: invokes the functor if still armed.
-  // Exceptions thrown by the functor are suppressed to satisfy the
-  // no-throw destructor contract.  Use invoke() when exception propagation
-  // is required.
+  // Destructor: invokes the functor if still armed. Exceptions thrown by the
+  // functor are suppressed to satisfy the no-throw destructor contract.  Use
+  // invoke() when exception propagation is required.
   ~ScopedExec();
 
-  // ---------------------------------------------------------------------------
   // Disarm / re-arm
-  // ---------------------------------------------------------------------------
 
-  // Disarms the executor without executing the functor.
-  // Returns the previously stored functor (may be empty).
+  // Disarms the executor without executing the functor. Returns the previously
+  // stored functor (may be empty).
   std::function<void()> release();
 
-  // Replaces the stored functor.
-  // If the executor is currently armed, the *old* functor is executed (outside
-  // the lock for ThreadSafePolicy) before the replacement is installed.
-  // Pass nullptr/empty to install a new functor without firing the old one
-  // is not the intent here — use reset() for that.
+  // Replaces the stored functor. If the executor is currently armed, the *old*
+  // functor is executed (outside the lock for ThreadSafePolicy) before the
+  // replacement is installed. Pass nullptr/empty to install a new functor
+  // without firing the old one is not the intent here; use reset() for that.
   template <typename Fn, typename = std::enable_if_t<
-                             std::is_invocable_r_v<void, std::decay_t<Fn>>>>
+                           std::is_invocable_r_v<void, std::decay_t<Fn>>>>
   void reset(Fn &&fn) {
     reset(std::function<void()>(std::forward<Fn>(fn)));
   }
@@ -179,28 +176,24 @@ public:
   // Runs the current functor (if armed) then leaves the executor disarmed.
   void reset();
 
-  // ---------------------------------------------------------------------------
   // Manual execution
-  // ---------------------------------------------------------------------------
 
-  // Executes the functor immediately and disarms the executor.
-  // If the executor is already disarmed this is a no-op.
-  // Exceptions thrown by the functor propagate to the caller.
-  // For ThreadSafePolicy: safe to call concurrently — only one thread fires.
+  // Executes the functor immediately and disarms the executor. If the executor
+  // is already disarmed this is a no-op. Exceptions thrown by the functor
+  // propagate to the caller. For ThreadSafePolicy: safe to call concurrently;
+  // only one thread fires.
   void invoke();
 
-  // ---------------------------------------------------------------------------
   // Observers
-  // ---------------------------------------------------------------------------
 
-  // Returns true if the executor is currently armed.
-  // For ThreadSafePolicy: the return value is a snapshot that may become stale
-  // immediately after this call returns.
+  // Returns true if the executor is currently armed. For ThreadSafePolicy: the
+  // return value is a snapshot that may become stale immediately after this
+  // call returns.
   explicit operator bool() const;
 
 private:
   // Returns a LockGuard over mu_ (ThreadSafePolicy) or a NullLockGuard
-  // (UnsafePolicy).  Callers hold the returned guard for the critical section.
+  // (UnsafePolicy). Callers hold the returned guard for the critical section.
   LockGuard AcquireLock() const {
     if constexpr (std::is_same_v<Policy, ThreadSafePolicy>) {
       return LockGuard{this->mu_};
@@ -210,8 +203,8 @@ private:
   }
 
   // Acquires the lock, clears (fn_, armed_), and returns the old functor.
-  // Returns an empty function if the executor was not armed.
-  // The caller is responsible for executing the returned functor.
+  // Returns an empty function if the executor was not armed. The caller is
+  // responsible for executing the returned functor.
   std::function<void()> ExtractIfArmed();
 
   // Implementation of move construction, templated on a dummy to share code.
@@ -221,22 +214,17 @@ private:
   bool armed_ = false;
 };
 
-// =============================================================================
 // Convenience aliases
-// =============================================================================
 
 // Thread-safe variant: all methods safe to call concurrently.
 using ScopedExecTS = ScopedExec<ThreadSafePolicy>;
 
 // Unsafe variant: no locking, for single-threaded or externally-synchronised
-// use.  Zero size and runtime overhead compared to ScopedExecTS.
+// use. Zero size and runtime overhead compared to ScopedExecTS.
 using ScopedExecUnsafe = ScopedExec<UnsafePolicy>;
 
-// =============================================================================
-// Template method definitions
-// =============================================================================
+// ---------------------------------------------------------------------------
 
-//------------------------------------------------------------------------------
 template <typename Policy> ScopedExec<Policy>::~ScopedExec() {
   try {
     auto fn = ExtractIfArmed();
@@ -247,7 +235,8 @@ template <typename Policy> ScopedExec<Policy>::~ScopedExec() {
   }
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 template <typename Policy>
 void ScopedExec<Policy>::MoveConstruct(ScopedExec &&other) {
   if constexpr (std::is_same_v<Policy, ThreadSafePolicy>) {
@@ -263,7 +252,8 @@ void ScopedExec<Policy>::MoveConstruct(ScopedExec &&other) {
   }
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 template <typename Policy>
 ScopedExec<Policy> &ScopedExec<Policy>::operator=(ScopedExec &&other) {
   if (this == &other)
@@ -301,14 +291,16 @@ ScopedExec<Policy> &ScopedExec<Policy>::operator=(ScopedExec &&other) {
   return *this;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 template <typename Policy> std::function<void()> ScopedExec<Policy>::release() {
   [[maybe_unused]] auto lk = AcquireLock();
   armed_ = false;
   return std::move(fn_);
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 template <typename Policy>
 void ScopedExec<Policy>::reset(std::function<void()> fn) {
   std::function<void()> old_fn;
@@ -325,7 +317,8 @@ void ScopedExec<Policy>::reset(std::function<void()> fn) {
     old_fn();
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 template <typename Policy> void ScopedExec<Policy>::reset() {
   std::function<void()> old_fn;
   {
@@ -340,20 +333,23 @@ template <typename Policy> void ScopedExec<Policy>::reset() {
     old_fn();
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 template <typename Policy> void ScopedExec<Policy>::invoke() {
   auto fn = ExtractIfArmed();
   if (fn)
     fn();
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 template <typename Policy> ScopedExec<Policy>::operator bool() const {
   [[maybe_unused]] auto lk = AcquireLock();
   return armed_;
 }
 
-//------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 template <typename Policy>
 std::function<void()> ScopedExec<Policy>::ExtractIfArmed() {
   [[maybe_unused]] auto lk = AcquireLock();
@@ -362,6 +358,8 @@ std::function<void()> ScopedExec<Policy>::ExtractIfArmed() {
   armed_ = false;
   return std::move(fn_);
 }
+
+// ---------------------------------------------------------------------------
 
 } // namespace misc
 } // namespace utils

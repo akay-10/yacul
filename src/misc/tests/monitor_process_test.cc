@@ -1,24 +1,18 @@
 #include "monitor_process.h"
 
-#include <sys/wait.h>
-#include <unistd.h>
-
+#include "gtest/gtest.h"
 #include <atomic>
 #include <chrono>
 #include <csignal>
 #include <string>
+#include <sys/wait.h>
 #include <thread>
+#include <unistd.h>
 #include <vector>
-
-#include "gtest/gtest.h"
 
 using namespace std::chrono_literals;
 using namespace utils::misc;
 
-// ==========================================================================
-// Global test environment: make sure any leftover monitor is stopped before
-// the process exits (avoids zombie threads in the test runner).
-// ==========================================================================
 class MonitorProcessEnvironment : public ::testing::Environment {
 public:
   void TearDown() override {
@@ -30,15 +24,12 @@ public:
   }
 };
 
-// ==========================================================================
-// Fixture: ensures a clean state before/after every test.
-// ==========================================================================
 class MonitorProcessTest : public ::testing::Test {
 protected:
   void SetUp() override {
     // Bring the monitor to kIdle unconditionally before each test.
-    // WaitForStop() resets state to kIdle after joining the thread, so this
-    // is safe regardless of what the previous test left behind.
+    // WaitForStop() resets state to kIdle after joining the thread, so this is
+    // safe regardless of what the previous test left behind.
     if (MonitorProcess::GetState() == MonitorProcess::State::kRunning ||
         MonitorProcess::GetState() == MonitorProcess::State::kStopping) {
       MonitorProcess::RequestStop();
@@ -79,7 +70,7 @@ protected:
     return cfg;
   }
 
-  // Poll until state matches |expected| or |timeout| elapses.
+  // Poll until state matches 'expected' or 'timeout' elapses.
   static bool WaitForState(MonitorProcess::State expected,
                            std::chrono::milliseconds timeout = 5000ms) {
     auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -103,14 +94,6 @@ protected:
     return 0;
   }
 };
-
-// ==========================================================================
-// Tests
-// ==========================================================================
-
-// --------------------------------------------------------------------------
-// Start / Stop basics
-// --------------------------------------------------------------------------
 
 TEST_F(MonitorProcessTest, InitialStateIsIdle) {
   EXPECT_EQ(MonitorProcess::GetState(), MonitorProcess::State::kIdle);
@@ -145,10 +128,6 @@ TEST_F(MonitorProcessTest, RequestStopTransitionsToStopped) {
   EXPECT_EQ(MonitorProcess::GetChildPid(), 0);
 }
 
-// --------------------------------------------------------------------------
-// Child PID tracking
-// --------------------------------------------------------------------------
-
 TEST_F(MonitorProcessTest, ChildPidIsNonZeroAfterStart) {
   ASSERT_TRUE(MonitorProcess::Start(MakeSleepConfig()));
   pid_t pid = WaitForChildPid();
@@ -162,10 +141,6 @@ TEST_F(MonitorProcessTest, ChildPidIsZeroAfterStop) {
   MonitorProcess::WaitForStop();
   EXPECT_EQ(MonitorProcess::GetChildPid(), 0);
 }
-
-// --------------------------------------------------------------------------
-// GetStats
-// --------------------------------------------------------------------------
 
 TEST_F(MonitorProcessTest, GetStatsReflectsRunningState) {
   ASSERT_TRUE(MonitorProcess::Start(MakeSleepConfig()));
@@ -181,10 +156,6 @@ TEST_F(MonitorProcessTest, GetStatsReflectsIdleState) {
   EXPECT_EQ(stats.current_child_pid, 0);
   EXPECT_EQ(stats.state, MonitorProcess::State::kIdle);
 }
-
-// --------------------------------------------------------------------------
-// Restart on crash
-// --------------------------------------------------------------------------
 
 TEST_F(MonitorProcessTest, ChildIsRestartedAfterCrash) {
   std::atomic<int> exit_count{0};
@@ -216,10 +187,6 @@ TEST_F(MonitorProcessTest, RestartCounterIncrements) {
   EXPECT_GE(MonitorProcess::GetStats().restart_count, 2);
 }
 
-// --------------------------------------------------------------------------
-// Max-restart policies
-// --------------------------------------------------------------------------
-
 TEST_F(MonitorProcessTest, MaxRestartPolicyStopMonitoringStopsAfterLimit) {
   auto cfg = MakeExitImmediateConfig(1);
   cfg.max_restarts = 2;
@@ -231,10 +198,6 @@ TEST_F(MonitorProcessTest, MaxRestartPolicyStopMonitoringStopsAfterLimit) {
   // At this point the monitor thread set kStopped; TearDown will reset it.
   EXPECT_EQ(MonitorProcess::GetState(), MonitorProcess::State::kStopped);
 }
-
-// --------------------------------------------------------------------------
-// SendSignalToChild
-// --------------------------------------------------------------------------
 
 TEST_F(MonitorProcessTest, SendSignalToChildSucceeds) {
   ASSERT_TRUE(MonitorProcess::Start(MakeSleepConfig(60)));
@@ -249,10 +212,6 @@ TEST_F(MonitorProcessTest, SendSignalToChildSucceeds) {
 TEST_F(MonitorProcessTest, SendSignalToChildFailsWhenNoChild) {
   EXPECT_FALSE(MonitorProcess::SendSignalToChild(SIGCONT));
 }
-
-// --------------------------------------------------------------------------
-// on_exit callback
-// --------------------------------------------------------------------------
 
 TEST_F(MonitorProcessTest, OnExitCallbackIsInvoked) {
   std::atomic<bool> callback_called{false};
@@ -273,10 +232,6 @@ TEST_F(MonitorProcessTest, OnExitCallbackIsInvoked) {
   EXPECT_GT(received_pid.load(), 0);
 }
 
-// --------------------------------------------------------------------------
-// on_pre_start callback
-// --------------------------------------------------------------------------
-
 TEST_F(MonitorProcessTest, OnPreStartCallbackIsInvoked) {
   std::atomic<int> call_count{0};
 
@@ -292,10 +247,6 @@ TEST_F(MonitorProcessTest, OnPreStartCallbackIsInvoked) {
   // At least the first pre-start call should have been made.
   EXPECT_GE(call_count.load(), 1);
 }
-
-// --------------------------------------------------------------------------
-// Health-check hook
-// --------------------------------------------------------------------------
 
 TEST_F(MonitorProcessTest, HealthCheckFailureCausesRestart) {
   std::atomic<int> kill_count{0};
@@ -338,10 +289,6 @@ TEST_F(MonitorProcessTest, HealthCheckPassDoesNotKillChild) {
   EXPECT_EQ(exit_count.load(), 0);
 }
 
-// --------------------------------------------------------------------------
-// Working directory
-// --------------------------------------------------------------------------
-
 TEST_F(MonitorProcessTest, WorkingDirectoryIsApplied) {
   MonitorProcess::Config cfg;
   cfg.argv = {"/bin/sh", "-c", "exit 0"};
@@ -355,10 +302,6 @@ TEST_F(MonitorProcessTest, WorkingDirectoryIsApplied) {
   ASSERT_TRUE(WaitForState(MonitorProcess::State::kStopped, 8000ms));
   // If the process ran without error the working directory was accepted.
 }
-
-// --------------------------------------------------------------------------
-// Graceful stop signal
-// --------------------------------------------------------------------------
 
 TEST_F(MonitorProcessTest, GracefulStopUsesConfiguredSignal) {
   // Use SIGTERM (default) – just verify the child exits cleanly.
@@ -374,10 +317,6 @@ TEST_F(MonitorProcessTest, GracefulStopUsesConfiguredSignal) {
 
   EXPECT_EQ(MonitorProcess::GetState(), MonitorProcess::State::kIdle);
 }
-
-// --------------------------------------------------------------------------
-// Restart on SIGKILL (simulated crash)
-// --------------------------------------------------------------------------
 
 TEST_F(MonitorProcessTest, ChildIsRestartedAfterSigkill) {
   std::atomic<int> restart_seen{0};
@@ -404,10 +343,6 @@ TEST_F(MonitorProcessTest, ChildIsRestartedAfterSigkill) {
   EXPECT_GE(restart_seen.load(), 1);
 }
 
-// --------------------------------------------------------------------------
-// Environment variable passthrough
-// --------------------------------------------------------------------------
-
 TEST_F(MonitorProcessTest, CustomEnvIsPassedToChild) {
   // Child exits 0 if MY_TEST_VAR is set, 1 otherwise.
   MonitorProcess::Config cfg;
@@ -431,10 +366,6 @@ TEST_F(MonitorProcessTest, CustomEnvIsPassedToChild) {
   EXPECT_EQ(last_exit_code.load(), 0);
 }
 
-// --------------------------------------------------------------------------
-// Back-off grows with consecutive restarts
-// --------------------------------------------------------------------------
-
 TEST_F(MonitorProcessTest, BackoffDoesNotExceedMax) {
   // Indirectly test: run with many quick exits and measure total elapsed time.
   // With max back-off of 200ms and 4 restarts the total back-off cannot
@@ -454,10 +385,6 @@ TEST_F(MonitorProcessTest, BackoffDoesNotExceedMax) {
   // Upper bound: 4 restarts × 200ms max back-off + generous exec overhead.
   EXPECT_LT(elapsed, std::chrono::milliseconds{3000});
 }
-
-// ==========================================================================
-// main
-// ==========================================================================
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

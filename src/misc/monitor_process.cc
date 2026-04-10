@@ -1,29 +1,25 @@
 #include "monitor_process.h"
 
-#include <fcntl.h>
-#include <pthread.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
 #include <cerrno>
 #include <cstring>
+#include <fcntl.h>
 #include <iostream>
-#include <stdexcept>
+#include <pthread.h>
+#include <sys/wait.h>
 #include <thread>
+#include <unistd.h>
 
 using namespace std;
 
 namespace utils {
 namespace misc {
 
-// ---------------------------------------------------------------------------
 // Static member definitions
-// ---------------------------------------------------------------------------
 
 mutex MonitorProcess::state_mutex_;
 MonitorProcess::Config MonitorProcess::config_;
 atomic<MonitorProcess::State> MonitorProcess::state_{
-    MonitorProcess::State::kIdle};
+  MonitorProcess::State::kIdle};
 atomic<pid_t> MonitorProcess::child_pid_{0};
 atomic<int> MonitorProcess::restart_count_{0};
 atomic<int> MonitorProcess::consecutive_restart_count_{0};
@@ -32,8 +28,6 @@ pthread_t MonitorProcess::monitor_thread_{};
 bool MonitorProcess::monitor_thread_valid_{false};
 atomic<bool> MonitorProcess::stop_requested_{false};
 
-// ---------------------------------------------------------------------------
-// Public API
 // ---------------------------------------------------------------------------
 
 bool MonitorProcess::Start(Config cfg) {
@@ -78,8 +72,8 @@ bool MonitorProcess::Start(Config cfg) {
 
 void MonitorProcess::RequestStop() {
   bool already_stopping =
-      (state_.load() == State::kStopping || state_.load() == State::kStopped ||
-       state_.load() == State::kIdle);
+    (state_.load() == State::kStopping || state_.load() == State::kStopped ||
+     state_.load() == State::kIdle);
 
   if (already_stopping)
     return;
@@ -89,15 +83,15 @@ void MonitorProcess::RequestStop() {
   stop_requested_ = true;
   state_ = State::kStopping;
 
-  // Best-effort signal delivery to any already-running child.  If child_pid_
-  // is 0 here the monitor thread will see stop_requested_ before it calls
-  // waitpid and will handle the kill itself.
+  // Best-effort signal delivery to any already-running child. If child_pid_ is
+  // 0 here the monitor thread will see stop_requested_ before it calls waitpid
+  // and will handle the kill itself.
   pid_t pid = child_pid_.load();
   if (pid > 0) {
     kill(pid, config_.stop_signal);
   }
-  // Do NOT block here.  The actual reaping is done by the monitor thread;
-  // the caller must call WaitForStop() to block until completion.
+  // Do NOT block here. The actual reaping is done by the monitor thread; the
+  // caller must call WaitForStop() to block until completion.
 }
 
 // ---------------------------------------------------------------------------
@@ -155,8 +149,6 @@ MonitorProcess::State MonitorProcess::GetState() { return state_.load(); }
 pid_t MonitorProcess::GetChildPid() { return child_pid_.load(); }
 
 // ---------------------------------------------------------------------------
-// Monitor thread
-// ---------------------------------------------------------------------------
 
 void *MonitorProcess::MonitorThreadEntry(void * /*arg*/) {
   MonitorLoop();
@@ -167,17 +159,13 @@ void *MonitorProcess::MonitorThreadEntry(void * /*arg*/) {
 
 void MonitorProcess::MonitorLoop() {
   while (!stop_requested_.load()) {
-    // ------------------------------------------------------------------
     // Pre-start callback
-    // ------------------------------------------------------------------
     int attempt = restart_count_.load();
     if (config_.on_pre_start) {
       config_.on_pre_start(attempt);
     }
 
-    // ------------------------------------------------------------------
     // Spawn child
-    // ------------------------------------------------------------------
     pid_t pid = SpawnChild();
     if (pid < 0) {
       cerr << "[MonitorProcess] SpawnChild() failed, errno=" << errno << "\n";
@@ -193,9 +181,7 @@ void MonitorProcess::MonitorLoop() {
       last_start_time_ = chrono::steady_clock::now();
     }
 
-    // ------------------------------------------------------------------
     // Monitor loop: health-check + waitpid
-    // ------------------------------------------------------------------
     int wait_status = 0;
     bool child_exited = false;
 
@@ -204,8 +190,8 @@ void MonitorProcess::MonitorLoop() {
         // RequestStop() already sent stop_signal (if child was alive then).
         // Re-send in case child_pid_ was 0 when RequestStop() ran.
         kill(pid, config_.stop_signal);
-        bool exited = WaitForChildWithTimeout(config_.graceful_stop_timeout,
-                                              &wait_status);
+        bool exited =
+          WaitForChildWithTimeout(config_.graceful_stop_timeout, &wait_status);
         if (!exited) {
           kill(pid, SIGKILL);
           waitpid(pid, &wait_status, 0);
@@ -232,9 +218,7 @@ void MonitorProcess::MonitorLoop() {
       }
     }
 
-    // ------------------------------------------------------------------
     // Child has exited
-    // ------------------------------------------------------------------
     child_pid_ = 0;
 
     if (config_.on_exit) {
@@ -246,7 +230,7 @@ void MonitorProcess::MonitorLoop() {
 
     // Determine whether the child ran long enough to be "stable".
     auto run_duration = chrono::duration_cast<chrono::seconds>(
-        chrono::steady_clock::now() - last_start_time_);
+      chrono::steady_clock::now() - last_start_time_);
 
     if (config_.stable_run_threshold.count() > 0 &&
         run_duration >= config_.stable_run_threshold) {
@@ -256,9 +240,7 @@ void MonitorProcess::MonitorLoop() {
     restart_count_++;
     consecutive_restart_count_++;
 
-    // ------------------------------------------------------------------
     // Max-restart policy
-    // ------------------------------------------------------------------
     int max = config_.max_restarts;
     if (max > 0 && consecutive_restart_count_.load() > max) {
       if (config_.max_restart_policy == MaxRestartPolicy::kStopMonitoring) {
@@ -270,9 +252,7 @@ void MonitorProcess::MonitorLoop() {
       }
     }
 
-    // ------------------------------------------------------------------
     // Back-off before next restart
-    // ------------------------------------------------------------------
     auto backoff = ComputeBackoff(consecutive_restart_count_.load());
     cerr << "[MonitorProcess] Child pid=" << pid
          << " exited (status=" << wait_status << "). Restarting in "
@@ -287,14 +267,12 @@ void MonitorProcess::MonitorLoop() {
       this_thread::sleep_for(sleep_for);
       remaining -= sleep_for;
     }
-  } // outer while
+  }
 
   child_pid_ = 0;
   state_ = State::kStopped;
 }
 
-// ---------------------------------------------------------------------------
-// SpawnChild
 // ---------------------------------------------------------------------------
 
 pid_t MonitorProcess::SpawnChild() {
@@ -321,9 +299,7 @@ pid_t MonitorProcess::SpawnChild() {
   }
 
   if (pid == 0) {
-    // ---------------------------------------------------------------
     // Child process
-    // ---------------------------------------------------------------
 
     // New process group so signals from the terminal don't reach us.
     setsid();
@@ -356,8 +332,6 @@ pid_t MonitorProcess::SpawnChild() {
 }
 
 // ---------------------------------------------------------------------------
-// WaitForChildWithTimeout
-// ---------------------------------------------------------------------------
 
 bool MonitorProcess::WaitForChildWithTimeout(chrono::milliseconds timeout,
                                              int *out_status) {
@@ -386,8 +360,6 @@ bool MonitorProcess::WaitForChildWithTimeout(chrono::milliseconds timeout,
 }
 
 // ---------------------------------------------------------------------------
-// GracefulKill
-// ---------------------------------------------------------------------------
 
 void MonitorProcess::GracefulKill(pid_t pid) {
   if (pid <= 0)
@@ -407,8 +379,6 @@ void MonitorProcess::GracefulKill(pid_t pid) {
 }
 
 // ---------------------------------------------------------------------------
-// ComputeBackoff
-// ---------------------------------------------------------------------------
 
 chrono::milliseconds MonitorProcess::ComputeBackoff(int consecutive) {
   if (consecutive <= 0)
@@ -425,8 +395,6 @@ chrono::milliseconds MonitorProcess::ComputeBackoff(int consecutive) {
 }
 
 // ---------------------------------------------------------------------------
-// RedirectToDevNull
-// ---------------------------------------------------------------------------
 
 void MonitorProcess::RedirectToDevNull(int fd) {
   int null_fd = open("/dev/null", O_RDWR);
@@ -435,6 +403,8 @@ void MonitorProcess::RedirectToDevNull(int fd) {
   dup2(null_fd, fd);
   close(null_fd);
 }
+
+// ---------------------------------------------------------------------------
 
 } // namespace misc
 } // namespace utils

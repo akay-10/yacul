@@ -2,32 +2,22 @@
 
 #include <atomic>
 #include <functional>
+#include <gtest/gtest.h>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
-
 using namespace std;
 using namespace utils::misc;
-
-// =============================================================================
-// Global test environment
-// =============================================================================
 
 class ScopedExecEnvironment : public ::testing::Environment {
 public:
   void SetUp() override {}
   void TearDown() override {}
 };
-
-// =============================================================================
-// Typed fixture — runs the same behavioural tests against both policies
-// =============================================================================
 
 template <typename Policy> class ScopedExecPolicyTest : public ::testing::Test {
 protected:
@@ -44,10 +34,6 @@ protected:
 
 using PolicyTypes = ::testing::Types<ThreadSafePolicy, UnsafePolicy>;
 TYPED_TEST_SUITE(ScopedExecPolicyTest, PolicyTypes);
-
-// =============================================================================
-// Construction & armed/disarmed state  [both policies]
-// =============================================================================
 
 TYPED_TEST(ScopedExecPolicyTest, DefaultConstructedIsDisarmed) {
   typename TestFixture::Exec exec;
@@ -69,10 +55,6 @@ TYPED_TEST(ScopedExecPolicyTest, ConstructedWithNullFunctionIsDisarmed) {
   EXPECT_FALSE(static_cast<bool>(exec));
 }
 
-// =============================================================================
-// Destructor  [both policies]
-// =============================================================================
-
 TYPED_TEST(ScopedExecPolicyTest, DestructorRunsFunctorExactlyOnce) {
   atomic<int> counter{0};
   {
@@ -91,14 +73,9 @@ TYPED_TEST(ScopedExecPolicyTest, DestructorDoesNotRunAfterRelease) {
 }
 
 TYPED_TEST(ScopedExecPolicyTest, DestructorSuppressesExceptions) {
-  EXPECT_NO_THROW({
-    typename TestFixture::Exec exec([] { throw runtime_error("boom"); });
-  });
+  EXPECT_NO_THROW(
+    { typename TestFixture::Exec exec([] { throw runtime_error("boom"); }); });
 }
-
-// =============================================================================
-// release()  [both policies]
-// =============================================================================
 
 TYPED_TEST(ScopedExecPolicyTest, ReleaseDisarmsExecutor) {
   atomic<int> counter{0};
@@ -122,10 +99,6 @@ TYPED_TEST(ScopedExecPolicyTest, ReleaseOnDisarmedReturnsEmptyFunction) {
   auto fn = exec.release();
   EXPECT_FALSE(static_cast<bool>(fn));
 }
-
-// =============================================================================
-// invoke()  [both policies]
-// =============================================================================
 
 TYPED_TEST(ScopedExecPolicyTest, InvokeRunsFunctorAndDisarms) {
   atomic<int> counter{0};
@@ -171,10 +144,6 @@ TYPED_TEST(ScopedExecPolicyTest, InvokeDisarmsBeforeExecuting) {
   EXPECT_EQ(counter.load(), 1);
 }
 
-// =============================================================================
-// reset(fn)  [both policies]
-// =============================================================================
-
 TYPED_TEST(ScopedExecPolicyTest, ResetReplacesExistingFunctor) {
   string log;
   typename TestFixture::Exec exec(this->MakeLogger(log, "A"));
@@ -201,10 +170,6 @@ TYPED_TEST(ScopedExecPolicyTest, ResetWithNullFunctionDisarms) {
   EXPECT_EQ(counter.load(), 1);
 }
 
-// =============================================================================
-// reset() — no-arg overload  [both policies]
-// =============================================================================
-
 TYPED_TEST(ScopedExecPolicyTest, ResetNoArgRunsOldFunctorAndDisarms) {
   atomic<int> counter{0};
   typename TestFixture::Exec exec(this->MakeIncrementer(counter));
@@ -220,10 +185,6 @@ TYPED_TEST(ScopedExecPolicyTest, ResetNoArgOnDisarmedIsNoop) {
   EXPECT_EQ(counter.load(), 0);
   EXPECT_FALSE(static_cast<bool>(exec));
 }
-
-// =============================================================================
-// Move semantics  [both policies]
-// =============================================================================
 
 TYPED_TEST(ScopedExecPolicyTest, MoveConstructorTransfersOwnership) {
   atomic<int> counter{0};
@@ -267,10 +228,6 @@ TYPED_TEST(ScopedExecPolicyTest, MoveAssignDisarmedOntoArmed) {
   EXPECT_FALSE(static_cast<bool>(dst));
 }
 
-// =============================================================================
-// Callable variety  [both policies]
-// =============================================================================
-
 TYPED_TEST(ScopedExecPolicyTest, AcceptsStdFunction) {
   atomic<int> counter{0};
   function<void()> fn = [&counter] { ++counter; };
@@ -285,14 +242,10 @@ TYPED_TEST(ScopedExecPolicyTest, AcceptsSharedPtrCapture) {
   int captured = 0;
   {
     typename TestFixture::Exec exec(
-        [p = move(ptr), &captured] { captured = *p; });
+      [p = move(ptr), &captured] { captured = *p; });
   }
   EXPECT_EQ(captured, 42);
 }
-
-// =============================================================================
-// Re-arm from within the functor  [both policies]
-// =============================================================================
 
 TYPED_TEST(ScopedExecPolicyTest, FunctorCanReArmViaResetWithoutDeadlock) {
   atomic<int> counter{0};
@@ -312,10 +265,6 @@ TYPED_TEST(ScopedExecPolicyTest, FunctorCanReArmViaResetWithoutDeadlock) {
   EXPECT_FALSE(static_cast<bool>(exec));
 }
 
-// =============================================================================
-// Compile-time size check: UnsafePolicy must be smaller than ThreadSafePolicy
-// =============================================================================
-
 TEST(ScopedExecSizeTest, UnsafePolicySmallerThanThreadSafePolicy) {
   EXPECT_LT(sizeof(ScopedExecUnsafe), sizeof(ScopedExecTS));
 }
@@ -325,10 +274,6 @@ TEST(ScopedExecSizeTest, UnsafePolicyHasNoMutexOverhead) {
   // padding. We just verify it is strictly smaller, not an exact value.
   EXPECT_LT(sizeof(ScopedExecUnsafe), sizeof(ScopedExecTS));
 }
-
-// =============================================================================
-// Thread-safety specific tests  [ThreadSafePolicy only]
-// =============================================================================
 
 class ScopedExecTSTest : public ::testing::Test {};
 
@@ -386,19 +331,15 @@ TEST_F(ScopedExecTSTest, ConcurrentResetFiresOriginalFunctorExactlyOnce) {
     atomic<int> repl_fires{0};
     ScopedExecTS exec([&orig_fires] { ++orig_fires; });
     thread t1(
-        [&exec, &repl_fires] { exec.reset([&repl_fires] { ++repl_fires; }); });
+      [&exec, &repl_fires] { exec.reset([&repl_fires] { ++repl_fires; }); });
     thread t2(
-        [&exec, &repl_fires] { exec.reset([&repl_fires] { ++repl_fires; }); });
+      [&exec, &repl_fires] { exec.reset([&repl_fires] { ++repl_fires; }); });
     t1.join();
     t2.join();
     exec.release();
     EXPECT_EQ(orig_fires.load(), 1);
   }
 }
-
-// =============================================================================
-// main
-// =============================================================================
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

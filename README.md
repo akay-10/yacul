@@ -24,28 +24,22 @@ A C++20 utility library providing various components for system programming, con
 ### Logging
 
 - Logger - Structured logging with severity levels
-- BinaryLogger - Binary log output support
 
 ### Memory
 
 - Buffer - Memory buffer utilities
 - Arena - Memory arena allocation
-- Allocator - Custom allocator support
+- Allocator - Custom arena allocator support
 
 ### System
 
 - SystemInfo - System information gathering (CPU, memory, disk, network, etc.)
 - PopenWrapper - Process execution wrapper
 - IoUring - Linux io_uring support (WIP)
-- EpollDriver - Linux epoll support (WIP)
 
 ### Transformation
 
-- [yacul::transformation/README.md](/src/transformation/README.md)
-
-### Event (WIP - Not yet integrated)
-
-- EventDriver
+- [yacul::transformation/README.md](/yacul/transformation/README.md)
 
 ### Misc (WIP - Not yet integrated)
 

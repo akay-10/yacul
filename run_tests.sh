@@ -2,7 +2,7 @@
 set -e
 
 BUILD_DIR="build"
-BASE_DIR="src"
+BASE_DIR="yacul"
 TEST_DIR_NAME="tests"
 VERBOSE=false
 CONTINUE_ON_FAILURE=false

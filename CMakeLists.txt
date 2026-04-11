@@ -84,4 +84,4 @@ else()
       "or set UTILS_USE_EXTERNAL_ABSL=ON and provide it via find_package(absl)")
 endif()
 
-add_subdirectory(src)
+add_subdirectory(yacul)

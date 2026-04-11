@@ -10,6 +10,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -20,47 +21,48 @@
 namespace utils {
 namespace qos {
 
+// ---------------------------------------------------------------------------
+
 struct QosConfig {
-  // Maximum items per priority queue, 0 means unlimited.
+  // Maximum items per priority queue; 0 means unlimited.
   size_t max_queue_depth{4096};
 
-  // Total items across all queues, 0 means unlimited.
+  // Total items across all queues; 0 means unlimited.
   size_t max_total_depth{0};
 
-  // Rate limiting i.e. token bucket per priority, 0.0 means disabled.
-  // rate=tokens/second for each priority level.
+  // Rate limiting i.e. token bucket per priority; 0.0 means disabled.
   std::array<double, kNumPriorityLevels> rate_limit_per_priority{
     {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
 
-  // Burst capacity multiplier, bucket_size = rate × burst_multiplier.
+  // Burst capacity multiplier; bucket_size = rate × burst_multiplier.
   double burst_multiplier{2.0};
 
-  // Global rate limit across all priorities, 0.0 means disabled.
+  // Global rate limit across all priorities; 0.0 means disabled.
   double global_rate_limit{0.0};
   double global_burst_multiplier{2.0};
 
-  // Weighted round-robin quanta, i.e number of items to drain per priority
+  // Weighted round robin quanta, i.e number of items to drain per priority
   // level before moving to the next lower level.
   std::array<size_t, kNumPriorityLevels> wrr_quanta{{1, 2, 4, 8, 16, 32}};
 
-  // If true, deadline-aware scheduling is applied when items carry deadlines.
+  // If true, deadline aware scheduling is applied when items carry deadlines.
   bool deadline_scheduling{true};
 
   // Consumer threads.
   size_t num_consumer_threads{1};
 
-  // Items older than this are considered expired, 0 means no expiry.
+  // Items older than this are considered expired; 0 means no expiry.
   std::chrono::milliseconds item_ttl{std::chrono::milliseconds{0}};
 
   // Overflow policy.
   enum class OverflowPolicy {
     kDrop,       // silently drop new items
     kDropOldest, // evict oldest item in the full queue
-    kBlock,      // block caller until space is available (use with caution)
+    kBlock,      // block caller until space is available
   };
   OverflowPolicy overflow_policy{OverflowPolicy::kDrop};
 
-  // Fraction [0,1] of max_queue_depth at which back-pressure is signalled.
+  // Fraction [0,1] of max_queue_depth at which back pressure is signalled.
   double backpressure_threshold{0.8};
 };
 
@@ -76,7 +78,6 @@ public:
   // Construct with explicit configuration.
   explicit QOS(QosConfig config);
 
-  // Destructor: stops consumers and drains outstanding items.
   ~QOS();
 
   // Non-copyable, non-movable (owns threads and atomics).
@@ -85,7 +86,7 @@ public:
 
   // Lifecycle
 
-  // Start background consumer thread(s).  Must be called before Dequeue/Run.
+  // Start background consumer thread(s). Must be called before Dequeue/Run.
   void Start();
 
   // Gracefully stop consumers after draining remaining items.
@@ -102,8 +103,8 @@ public:
 
   // Submission
 
-  // Enqueue an item at its embedded priority.
-  // Returns true on success, false if rejected (rate-limited / queue full).
+  // Enqueue an item at its embedded priority. Returns true on success, false if
+  // rejected (rate-limited / queue full).
   bool Enqueue(IQosItem::Ptr item);
 
   // Enqueue overriding the item's own priority field.
@@ -117,13 +118,13 @@ public:
   bool EnqueueTask(std::function<void()> fn,
                    Priority priority = Priority::kNormal, std::string tag = {});
 
-  // Dequeue (manual consumer mode — consumers must be stopped)
+  // Dequeue (manual consumer mode; consumers must be stopped)
 
-  // Attempt to dequeue the highest-priority non-expired item.
-  // Returns nullptr if all queues are empty.
+  // Attempt to dequeue the highest-priority non-expired item. Returns nullptr
+  // if all queues are empty.
   IQosItem::Ptr TryDequeue();
 
-  // Bulk dequeue up to `max_items`; returns actual count.
+  // Bulk dequeue up to 'max_items'; returns actual count.
   size_t TryDequeueBulk(std::vector<IQosItem::Ptr> &out, size_t max_items);
 
   // Observers
@@ -199,6 +200,9 @@ private:
   std::atomic<bool> stop_requested_{false};
 
   std::vector<std::thread> consumer_threads_;
+
+  std::mutex backpressure_mu_;
+  std::condition_variable backpressure_cv_;
 
   // Observer list (copy-on-write via snapshot approach).
   mutable std::mutex observers_mu_;

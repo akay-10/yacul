@@ -1,5 +1,6 @@
 #include "yacul/qos/qos.h"
 
+#include "yacul/logging/logger.h"
 #include "yacul/qos/i_qos_item.h"
 
 #include <algorithm>
@@ -12,6 +13,8 @@ using namespace std;
 
 namespace utils {
 namespace qos {
+
+// ---------------------------------------------------------------------------
 
 namespace {
 
@@ -80,7 +83,8 @@ void QOS::Start() {
   bool expected = false;
   if (!running_.compare_exchange_strong(expected, true, memory_order_acq_rel,
                                         memory_order_relaxed)) {
-    return; // Already running.
+    LOG(INFO) << "QOS already running";
+    return;
   }
 
   stop_requested_.store(false, memory_order_release);
@@ -99,7 +103,8 @@ void QOS::Stop() {
   bool expected = true;
   if (!running_.compare_exchange_strong(expected, false, memory_order_acq_rel,
                                         memory_order_relaxed)) {
-    return; // Not running.
+    LOG(WARNING) << "QOS not running";
+    return;
   }
 
   stop_requested_.store(true, memory_order_release);
@@ -174,16 +179,15 @@ bool QOS::EnqueueInternal(IQosItem::Ptr item, Priority priority,
                           bool has_deadline) {
   auto &pq = *queues_[static_cast<size_t>(priority)];
 
-  // --- Admission: capacity check ---
+  // Admission: capacity check
   if (config_.max_queue_depth > 0 &&
       pq.depth.load(memory_order_relaxed) >= config_.max_queue_depth) {
     if (config_.overflow_policy == QosConfig::OverflowPolicy::kDrop) {
       NotifyDropped(item->metadata());
       stats_.At(priority).dropped.fetch_add(1, memory_order_relaxed);
       return false;
-    }
-    // kDropOldest: try to evict one item.
-    if (config_.overflow_policy == QosConfig::OverflowPolicy::kDropOldest) {
+    } else if (config_.overflow_policy ==
+               QosConfig::OverflowPolicy::kDropOldest) {
       IQosItem::Ptr evicted;
       if (pq.queue.try_dequeue(evicted)) {
         pq.depth.fetch_sub(1, memory_order_relaxed);
@@ -191,8 +195,14 @@ bool QOS::EnqueueInternal(IQosItem::Ptr item, Priority priority,
         NotifyDropped(evicted->metadata());
         stats_.At(priority).dropped.fetch_add(1, memory_order_relaxed);
       }
+    } else if (config_.overflow_policy == QosConfig::OverflowPolicy::kBlock) {
+      unique_lock<mutex> lk(backpressure_mu_);
+      backpressure_cv_.wait(lk, [&] {
+        return pq.depth.load(std::memory_order_relaxed) <
+                 config_.max_queue_depth ||
+               stop_requested_.load(std::memory_order_acquire);
+      });
     }
-    // kBlock handled below (spin for now; production may use a condvar).
   }
 
   if (config_.max_total_depth > 0 &&
@@ -202,7 +212,7 @@ bool QOS::EnqueueInternal(IQosItem::Ptr item, Priority priority,
     return false;
   }
 
-  // --- Admission: global rate limit ---
+  // Admission: global rate limit
   if (global_rate_limiter_) {
     if (!global_rate_limiter_->TryConsume(static_cast<double>(item->Cost()))) {
       NotifyDropped(item->metadata());
@@ -211,7 +221,7 @@ bool QOS::EnqueueInternal(IQosItem::Ptr item, Priority priority,
     }
   }
 
-  // --- Admission: per-priority rate limit ---
+  // Admission: per-priority rate limit
   if (pq.rate_limiter) {
     if (!pq.rate_limiter->TryConsume(static_cast<double>(item->Cost()))) {
       NotifyDropped(item->metadata());
@@ -220,7 +230,7 @@ bool QOS::EnqueueInternal(IQosItem::Ptr item, Priority priority,
     }
   }
 
-  // --- Stamp metadata ---
+  // Stamp metadata
   item->metadata().id = next_id_.fetch_add(1, memory_order_relaxed);
   item->metadata().enqueue_time = chrono::steady_clock::now();
   item->metadata().has_deadline = has_deadline;
@@ -280,6 +290,8 @@ IQosItem::Ptr QOS::DequeueInternal() {
       total_depth_.fetch_sub(1, memory_order_relaxed);
       stats_.At(static_cast<Priority>(level))
         .dequeued.fetch_add(1, memory_order_relaxed);
+
+      backpressure_cv_.notify_all();
 
       // TTL / expiry check.
       if (IsExpired(item)) {

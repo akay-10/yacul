@@ -26,7 +26,7 @@ endif()
 add_library(libmemory STATIC arena.cc buffer.cc)
 
 target_include_directories(
-  libmemory PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+  libmemory PUBLIC $<BUILD_INTERFACE:${YACUL_INCLUDE_ROOT}>
                    $<INSTALL_INTERFACE:include>)
 
 if(UTILS_GPERFTOOLS_AVAILABLE)

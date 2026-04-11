@@ -1,6 +1,8 @@
-# UTILS_SRC_ROOT is yacul/. The compile include root is CMAKE_SOURCE_DIR so
-# consumers and this tree include headers as yacul/logging/logger.h, etc.
+# UTILS_SRC_ROOT is this yacul/ tree. For #include "yacul/..." the compiler
+# needs the parent of yacul/ on the path — not CMAKE_SOURCE_DIR, which is the
+# top-level project when this tree is add_subdirectory'd from another repo.
 set(UTILS_SRC_ROOT "${CMAKE_CURRENT_LIST_DIR}")
+get_filename_component(YACUL_INCLUDE_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
 add_subdirectory(basic)
 add_subdirectory(concurrency)

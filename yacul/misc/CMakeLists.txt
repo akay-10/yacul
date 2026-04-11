@@ -1,6 +1,6 @@
 add_library(libmisc STATIC monitor_process.cc)
 
-target_include_directories(libmisc PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+target_include_directories(libmisc PUBLIC $<BUILD_INTERFACE:${YACUL_INCLUDE_ROOT}>
                                           $<INSTALL_INTERFACE:include>)
 
 target_link_libraries(libmisc PUBLIC libbasics liblogging)

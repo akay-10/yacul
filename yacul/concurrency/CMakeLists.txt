@@ -2,7 +2,7 @@ add_library(libconcurrency STATIC lock_id.cc lock_range.cc spinlock.cc
                                   threadpool.cc)
 
 target_include_directories(
-  libconcurrency PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+  libconcurrency PUBLIC $<BUILD_INTERFACE:${YACUL_INCLUDE_ROOT}>
                         $<INSTALL_INTERFACE:include>)
 
 target_link_libraries(libconcurrency PUBLIC libbasics liblogging)

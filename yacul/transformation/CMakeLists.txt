@@ -194,7 +194,7 @@ else()
 endif()
 
 target_include_directories(
-  libtransformation PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+  libtransformation PUBLIC $<BUILD_INTERFACE:${YACUL_INCLUDE_ROOT}>
                            $<INSTALL_INTERFACE:include>)
 
 # Compile-time feature macros — propagated to consumers via PUBLIC

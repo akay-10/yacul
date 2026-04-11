@@ -30,7 +30,7 @@ endif()
 add_library(liblogging STATIC logger.cc)
 
 target_include_directories(
-  liblogging PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+  liblogging PUBLIC $<BUILD_INTERFACE:${YACUL_INCLUDE_ROOT}>
                     $<INSTALL_INTERFACE:include>)
 
 if(UTILS_BACKWARD_AVAILABLE AND BACKWARD_SOURCE_DIR)

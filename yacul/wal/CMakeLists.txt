@@ -1,3 +1,17 @@
+add_library(libwal STATIC wal.cc)
+
+target_include_directories(
+  libwal PUBLIC $<BUILD_INTERFACE:${YACUL_INCLUDE_ROOT}>
+                $<INSTALL_INTERFACE:include>)
+
+target_link_libraries(libwal PUBLIC libbasics liblogging)
+
+add_library(${PROJECT_NAME}::wal ALIAS libwal)
+
+if(UTILS_BUILD_TEST)
+  add_subdirectory(tests)
+endif()
+
 option(UTILS_WAL_ENABLE_PROTOBUF
        "Enable protobuf support (fetched via FetchContent)" ON)
 
@@ -26,6 +40,8 @@ if(UTILS_WAL_ENABLE_PROTOBUF)
       ON
       CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(protobuf)
+
+  target_link_libraries(libwal PUBLIC libprotobuf)
 endif()
 
 # -- FlatBuffers -----------------------------------------------------------
@@ -46,6 +62,8 @@ if(UTILS_WAL_ENABLE_FLATBUFFERS)
       OFF
       CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(flatbuffers)
+
+  target_link_libraries(libwal PUBLIC flatbuffers)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -57,3 +75,4 @@ message(STATUS "  Protobuf      : ${UTILS_WAL_ENABLE_PROTOBUF}")
 message(STATUS "  FlatBuffers   : ${UTILS_WAL_ENABLE_FLATBUFFERS}")
 message(STATUS "========================================")
 message(STATUS "")
+

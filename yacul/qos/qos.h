@@ -72,6 +72,9 @@ struct QosConfig {
 // arbitrary threads. Internally backed by moodycamel::ConcurrentQueue.
 class QOS {
 public:
+  using Ptr = std::shared_ptr<QOS>;
+  using PtrConst = std::shared_ptr<const QOS>;
+
   // Construct with default configuration.
   QOS();
 

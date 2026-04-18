@@ -41,7 +41,7 @@ if(UTILS_WAL_ENABLE_PROTOBUF)
       CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(protobuf)
 
-  target_link_libraries(libwal PUBLIC libprotobuf)
+  target_link_libraries(libwal PUBLIC protobuf)
 endif()
 
 # -- FlatBuffers -----------------------------------------------------------
